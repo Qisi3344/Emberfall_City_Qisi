@@ -335,3 +335,12 @@ test('paused queued events remain hidden across unrelated renders and actions', 
   advanceHours(s, 1);
   assert.equal(s.event, 'foodProblem');
 });
+
+
+test('forced labor immediately raises discontent instead of lowering it', () => {
+  const s = newGame();
+  start(s);
+  const before = s.discontent;
+  assert.equal(act(s, { type: 'law', id: 'forcedWork' }).ok, true);
+  assert.equal(s.discontent, before + 12);
+});
