@@ -1,4 +1,4 @@
-import { BUILDINGS, RESEARCH, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, score } from './game.js';
+import { BUILDINGS, RESEARCH, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, score } from './game.js';
 import { audio } from './audio.js';
 
 const SAVE = 'ember-city-save-v1';
@@ -36,6 +36,13 @@ const fmt = value => Number.isInteger(value) ? value : value.toFixed(1);
 const pct = value => Math.max(0, Math.min(100, value));
 const resName = { coal: '煤炭', wood: '木材', steel: '钢材', food: '食物' };
 const ringName = n => ['','第一环','第二环','第三环'][n];
+const ICONS = {
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92a1.7 1.7 0 0 0-1.08-.68 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.04H3v-4h.92A1.7 1.7 0 0 0 4.6 8.88 1.7 1.7 0 0 0 4.26 7l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08V3h4v.92a1.7 1.7 0 0 0 1.08.68A1.7 1.7 0 0 0 17 4.26l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.39.34.74.6 1l.08.04H21v4h-.92c-.26.26-.48.61-.68.96Z"/></svg>',
+  build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-5 8 5v11"/><path d="M8 20v-6h8v6"/></svg>',
+  staff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c.6-4 2.5-6 6-6s5.4 2 6 6"/></svg>',
+  laws: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
+  city: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>',
+};
 function save() { localStorage.setItem(SAVE, JSON.stringify(state)); }
 function record() {
   if (state.recorded || !['won', 'lost'].includes(state.mode)) return;
@@ -73,7 +80,7 @@ function mapHtml() {
   return `<div class="city-map ${state.heatmap ? 'heat' : ''}" role="group" aria-label="三圈城市地图，24个建筑槽"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>${slots}<button class="generator ${!state.generator.on ? 'off' : ''} ${state.generator.overdrive ? 'overdrive' : ''}" data-open="generator" aria-label="发电机，${state.generator.on ? '运行中' : '已熄火'}"><span>♨</span><small>核心炉</small></button>${state.day >= 17 ? `<div class="stormveil ${state.day === 20 ? 'heavy' : ''}"></div>` : ''}</div>`;
 }
 function mapToolsHtml() {
-  return `<div class="map-tools" role="group" aria-label="地图工具"><button class="settings-btn" data-act="settings" aria-label="设置" title="设置">⚙</button><button class="heat-btn ${state.heatmap ? 'active' : ''}" data-act="heat" aria-label="${state.heatmap ? '关闭热力图' : '打开热力图'}" title="热力图" aria-pressed="${state.heatmap}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0Z"/><path d="M12 9v8"/></svg></button></div>`;
+  return `<div class="map-tools" role="group" aria-label="地图工具"><button class="settings-btn" data-act="settings" aria-label="设置" title="设置">${ICONS.settings}</button><button class="heat-btn ${state.heatmap ? 'active' : ''}" data-act="heat" aria-label="${state.heatmap ? '关闭热力图' : '打开热力图'}" title="热力图" aria-pressed="${state.heatmap}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0Z"/><path d="M12 9v8"/></svg></button></div>`;
 }
 function buildCards() {
   const categories = ['居住','生产','食物','设施','社会'];
@@ -90,7 +97,7 @@ function slotPanel() {
 }
 function staffPanel() {
   const list = state.slots.map((b, i) => b && BUILDINGS[b.type].workers ? { ...b, i } : null).filter(Boolean);
-  return { title: '人员调度', subtitle: `可用 ${availableWorkers(state)} / 已分配 ${assigned(state)} / 病患 ${state.sick}`, body: `<div class="stat-grid"><div class="stat">总人口<b>${state.population}</b></div><div class="stat">住房容量<b>${housing(state)}</b></div><div class="stat">儿童<b>${state.children}</b></div><div class="stat">病患<b>${state.sick}</b></div></div><div class="section-label">工作岗位</div>${list.length ? list.map(b => `<div class="card"><div class="cardline"><div class="card-main"><strong>${BUILDINGS[b.type].name}</strong><small>${ringName(ringOf(b.i))} · ${b.workers}/${BUILDINGS[b.type].workers * b.level} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-index="${b.i}" data-delta="-1" aria-label="减少${BUILDINGS[b.type].name}工人">−</button><button data-act="staff" data-index="${b.i}" data-delta="1" aria-label="增加${BUILDINGS[b.type].name}工人">+</button></div></div></div>`).join('') : '<p class="hint">先建造生产或服务建筑，才能分配工人。</p>'}` };
+  return { title: '人员调度', subtitle: `可用 ${availableWorkers(state)} / 健康劳动力 ${workforce(state)} / 已分配 ${assigned(state)}`, body: `<div class="stat-grid"><div class="stat">总人口<b>${state.population}</b></div><div class="stat">健康劳动力<b>${workforce(state)}</b></div><div class="stat">儿童<b>${state.children}</b></div><div class="stat">病患<b>${state.sick}</b></div></div><div class="section-label">工作岗位</div>${list.length ? list.map(b => `<div class="card"><div class="cardline"><div class="card-main"><strong>${BUILDINGS[b.type].name}</strong><small>${ringName(ringOf(b.i))} · ${b.workers}/${BUILDINGS[b.type].workers * b.level} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-index="${b.i}" data-delta="-1" aria-label="减少${BUILDINGS[b.type].name}工人">−</button><button data-act="staff" data-index="${b.i}" data-delta="1" aria-label="增加${BUILDINGS[b.type].name}工人">+</button></div></div></div>`).join('') : '<p class="hint">先建造生产或服务建筑，才能分配工人。</p>'}` };
 }
 function lawsPanel() {
   return { title: '法令册', subtitle: state.lawDay === state.day ? '今日已签署法令' : '今日可签署一条法令', body: Object.entries(LAWS).map(([id,l]) => `<div class="card"><div class="cardline"><div class="card-main"><strong>${l.name}</strong><small>${l.note}</small></div><button data-act="law" data-id="${id}" ${state.laws.includes(id) || (l.excludes && state.laws.includes(l.excludes)) || state.lawDay === state.day ? 'disabled' : ''}>${state.laws.includes(id) ? '已签署' : '签署'}</button></div></div>`).join('') };
@@ -149,14 +156,15 @@ function settingsHtml() {
 function render() {
   record();
   const scroll = app.querySelector('.sheet-body')?.scrollTop || 0;
-  const resources = Object.entries(state.resources).map(([key,value]) => `<div class="resource ${value < (key === 'coal' ? 30 : key === 'food' ? 15 : 10) ? 'low' : ''}"><img src="./assets/resources/${key}.png" alt="" width="30" height="30"><div class="resource-copy"><span>${resName[key]}</span><strong>${fmt(value)}</strong></div></div>`).join('');
-  app.innerHTML = `<main class="app"><header class="top"><div class="brand"><span>LAST HEARTH / 余烬城</span><strong>20 DAYS</strong></div><div class="dayline"><div><strong>DAY ${String(state.day).padStart(2,'0')}</strong><small>　${state.hour.toString().padStart(2,'0')}:00 · ${state.day === 20 ? '超级风暴' : state.day >= 17 ? '风暴逼近' : '雪天'}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}">${weather(state.day)}℃</div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b> / 住房 <b>${housing(state)}</b></span><span>可用 <b>${availableWorkers(state)}</b> · 病患 <b>${state.sick}</b></span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停 · 可手动推进') : '等待指令'}</small></div><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button><button class="time-btn" data-act="advance">推进 6 时</button></div><nav class="nav" aria-label="主要导航">${[['build','建造','⌂'],['staff','人员','♟'],['laws','法令','▤'],['city','城市','◉']].map(([id,label,glyph]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span>${glyph}</span>${label}</button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}</main>`;
-  app.querySelector('.bottom-controls').insertAdjacentHTML('beforebegin', socialAlertsHtml());
   const isDay = state.hour >= 6 && state.hour < 18;
+  const resources = Object.entries(state.resources).map(([key,value]) => `<div class="resource ${value < (key === 'coal' ? 30 : key === 'food' ? 15 : 10) ? 'low' : ''}"><img src="./assets/resources/${key}.png" alt="" width="30" height="30"><div class="resource-copy"><span>${resName[key]}</span><strong>${fmt(value)}</strong></div></div>`).join('');
+  app.innerHTML = `<main class="app"><header class="top"><div class="brand"><span>LAST HEARTH / 余烬城</span><strong>20 DAYS</strong></div><div class="dayline"><div><strong>DAY ${String(state.day).padStart(2,'0')}</strong><small>　${state.hour.toString().padStart(2,'0')}:00 · ${state.day === 20 ? '超级风暴' : state.day >= 17 ? '风暴逼近' : '雪天'}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}">${weather(state.day)}℃</div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b> / 住房 <b>${housing(state)}</b></span><span>可用 <b>${availableWorkers(state)}</b> · 病患 <b>${state.sick}</b></span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space"><img class="city-bg" src="${isDay ? './assets/city-day.png?v=2' : './assets/city-night.png?v=2'}" alt="" aria-hidden="true">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停 · 可手动推进') : '等待指令'}</small></div><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button><button class="time-btn" data-act="advance">推进 6 时</button></div><nav class="nav" aria-label="主要导航">${[['build','建造'],['staff','人员'],['laws','法令'],['city','城市']].map(([id,label]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span class="nav-icon">${ICONS[id]}</span>${label}</button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}</main>`;
+  app.querySelector('.bottom-controls').insertAdjacentHTML('beforebegin', socialAlertsHtml());
   const citySpace = app.querySelector('.city-space');
   citySpace.insertAdjacentHTML('afterbegin', mapToolsHtml());
-  if (state.mode === 'naming' || state.mode === 'intro') app.querySelector('.intro')?.insertAdjacentHTML('afterbegin', '<button class="intro-settings" data-act="settings" aria-label="设置" title="设置">⚙</button>');
+  if (state.mode === 'naming' || state.mode === 'intro') app.querySelector('.intro')?.insertAdjacentHTML('afterbegin', `<button class="intro-settings" data-act="settings" aria-label="设置" title="设置">${ICONS.settings}</button>`);
   citySpace.classList.add(isDay ? 'day' : 'night');
+  citySpace.classList.toggle('panel-open', !!panel);
   if (state.day === 20) citySpace.classList.add('storm');
   citySpace.classList.toggle('no-snow', !audio.prefs.snow);
   citySpace.style.setProperty('--snow-delay', `${-performance.now() / 1000}s`);
@@ -170,6 +178,7 @@ function advance(count) {
   if (moved) { state.speed = state.event || state.mode !== 'playing' ? 0 : state.speed; save(); render(); }
 }
 app.addEventListener('click', event => {
+  audio.unlock();
   const button = event.target.closest('button'); if (!button) return;
   audio.play(button.dataset.act === 'build' ? 'place' : 'ui');
   if (button.dataset.slot !== undefined) { selected = Number(button.dataset.slot); panel = 'slot'; render(); return; }
@@ -206,6 +215,7 @@ app.addEventListener('input', event => {
 });
 app.addEventListener('submit', event => {
   if (event.target.id !== 'ruler-form') return;
+  audio.unlock();
   event.preventDefault();
   draftName = event.target.elements.namedItem('ruler-name').value;
   dispatch({ type: 'confirmName', name: draftName, playerId });

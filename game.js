@@ -116,7 +116,22 @@ export function newGame() {
 export const ringOf = index => index < 6 ? 1 : index < 14 ? 2 : 3;
 export const housing = s => s.slots.reduce((n, b) => n + (b?.type === 'house' ? [0, 10, 15, 20][b.level] : 0), 0);
 export const assigned = s => s.slots.reduce((n, b) => n + (b?.workers || 0), 0);
-export const availableWorkers = s => Math.max(0, s.population - s.children + (s.laws.includes('childWork') ? 3 : 0) - s.sick - assigned(s));
+export const workforce = s => Math.max(0, s.population - s.children - s.sick + (s.laws.includes('childWork') ? 3 : 0));
+export const availableWorkers = s => Math.max(0, workforce(s) - assigned(s));
+
+// 人口减少、生病或离城后，旧岗位分配可能超过当前健康劳动力。
+// 自动释放超额岗位，避免出现“所有建筑都减到 0 仍无法重新派人”的软锁。
+function normalizeStaffing(s) {
+  let excess = Math.max(0, assigned(s) - workforce(s));
+  if (!excess) return;
+  for (let i = s.slots.length - 1; i >= 0 && excess > 0; i--) {
+    const b = s.slots[i];
+    if (!b?.workers) continue;
+    const release = Math.min(b.workers, excess);
+    b.workers -= release;
+    excess -= release;
+  }
+}
 export const storageLimit = s => 300 + s.slots.filter(b => b?.type === 'storage').length * 200;
 export const buildingHeat = (s, index) => weather(s.day) + (s.generator.on ? s.generator.power * 23 + (s.generator.overdrive ? 16 : 0) : 0) + [0, 10, 3, -4][ringOf(index)] + (s.slots[index]?.type === 'house' ? (s.slots[index].level - 1) * 5 + (s.researched.includes('insulation') ? 8 : 0) : 0);
 export function heatLabel(value) {
@@ -174,6 +189,7 @@ function flee(s, count) {
   s.population -= count;
   s.children = Math.max(0, s.children - Math.round(s.children * count / before));
   s.sick = Math.min(s.population, Math.max(0, s.sick - Math.round(s.sick * count / before)));
+  normalizeStaffing(s);
   s.social.fled += count;
   s.social.leavingIntent = Math.max(0, round(s.social.leavingIntent - count));
   s.social.lastFlight = { count, ...carried };
@@ -247,6 +263,7 @@ export function act(s, action) {
       pay(s, cost); b.level++; note(s, `${BUILDINGS[b.type].name}升至 ${b.level} 级。`); return result(true, s.message);
     }
     case 'staff': {
+      normalizeStaffing(s);
       if (!b || !BUILDINGS[b.type].workers || !Number.isInteger(action.delta)) return result(false, '此建筑不需要工人。');
       const next = b.workers + action.delta;
       if (next < 0 || next > BUILDINGS[b.type].workers * b.level || (action.delta > 0 && availableWorkers(s) < action.delta)) return result(false, '没有足够的可用工人。');
@@ -304,6 +321,7 @@ export function act(s, action) {
         else if (key === 'population') s.population += value;
         else s[key] = Math.max(0, s[key] + value);
       }
+      normalizeStaffing(s);
       updateExtremes(s); s.event = null; note(s, `${EVENTS[eventId].title}：${choice.label}。`); syncSocial(s); showNextEvent(s); return result(true, s.message);
     }
     default: return result(false, '未知操作。');
@@ -328,6 +346,7 @@ function daily(s) {
   s.frostbite += cold;
   const deaths = Math.min(s.sick, Math.max(0, Math.floor((s.sick - s.population * 0.27) / 5)) + Math.floor(missing / 8));
   s.sick -= deaths; s.population -= deaths; s.dead += deaths;
+  normalizeStaffing(s);
   s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0);
   s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);

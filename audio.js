@@ -1,12 +1,11 @@
-// 音频系统：BGM 按游戏状态自动切换（顺序淡入淡出，任一时刻只有一首在播），
-// Master / BGM / SFX 三路独立音量，雪花粒子偏好也存这里供设置面板读写。
+// 音频系统：BGM 使用 HTMLAudioElement 以兼容 iOS / 微信等移动端浏览器，
+// SFX 使用 Web Audio。Master / BGM / SFX 三路独立音量。
 const PREFS_KEY = 'ember-city-audio-v1';
-const FADE = 1.6;
 
 export const BGM_TRACKS = {
-  hearth: { src: './assets/bgm/bgm-hearth.mp3' },        // 炉火未熄 · 日常经营
-  'cold-front': { src: './assets/bgm/bgm-cold-front.mp3' }, // 逼近寒潮 · 中期降温与资源压力
-  'white-fall': { src: './assets/bgm/bgm-white-fall.mp3' }, // 白灾将至 · 最终风暴与严重危机
+  hearth: { src: './assets/bgm/bgm-hearth.mp3' },
+  'cold-front': { src: './assets/bgm/bgm-cold-front.mp3' },
+  'white-fall': { src: './assets/bgm/bgm-white-fall.mp3' },
 };
 
 const SFX_FILES = {
@@ -27,7 +26,6 @@ function loadPrefs() {
   catch { return { ...DEFAULT_PREFS }; }
 }
 
-// 白灾将至：最终风暴（第 17 天起）、暴乱最后通牒或离城倒计时等严重社会危机。
 export function bgmKeyFor(s) {
   if (!s || s.mode === 'won' || s.mode === 'lost') return null;
   const c = s.social || {};
@@ -45,102 +43,162 @@ class EmberAudio {
     this.fetching = new Map();
     this.pending = null;
     this.current = null;
-    this.nodes = null;
+    this.bgmEl = null;
     this.snapshot = null;
+    this.unlocked = false;
   }
+
   ensure() {
     if (this.ctx) return this.ctx;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
-    this.ctx = new Ctx();
-    const master = this.ctx.createGain(); master.connect(this.ctx.destination);
-    const bgm = this.ctx.createGain(); bgm.connect(master);
-    const sfx = this.ctx.createGain(); sfx.connect(master);
-    this.gains = { master, bgm, sfx };
-    this.applyVolumes();
-    return this.ctx;
+    try {
+      this.ctx = new Ctx();
+      const master = this.ctx.createGain(); master.connect(this.ctx.destination);
+      const sfx = this.ctx.createGain(); sfx.connect(master);
+      this.gains = { master, sfx };
+      this.applyVolumes();
+      return this.ctx;
+    } catch (error) {
+      console.warn('[EmberAudio] WebAudio init failed', error);
+      return null;
+    }
   }
+
   applyVolumes() {
-    if (!this.gains) return;
-    this.gains.master.gain.value = this.prefs.master;
-    this.gains.bgm.gain.value = this.prefs.bgm;
-    this.gains.sfx.gain.value = this.prefs.sfx;
+    if (this.gains) {
+      this.gains.master.gain.value = this.prefs.master;
+      this.gains.sfx.gain.value = this.prefs.sfx;
+    }
+    if (this.bgmEl) this.bgmEl.volume = Math.max(0, Math.min(1, this.prefs.master * this.prefs.bgm));
   }
+
   setVolume(key, value) {
     if (!['master', 'bgm', 'sfx'].includes(key)) return;
     this.prefs[key] = Math.max(0, Math.min(1, Number(value) || 0));
-    this.persist(); this.applyVolumes();
+    this.persist();
+    this.applyVolumes();
+    if (this.unlocked && this.pending && (!this.bgmEl || this.bgmEl.paused)) this.applyPending();
   }
+
   setSnow(on) { this.prefs.snow = !!on; this.persist(); }
   persist() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(this.prefs)); } catch {} }
-  init() {
-    const unlock = () => {
-      const ctx = this.ensure();
-      if (ctx && ctx.state === 'suspended') ctx.resume().then(() => this.applyPending()).catch(() => {});
-      else this.applyPending();
-      this.prefetch();
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-    window.addEventListener('pointerdown', unlock, { passive: true });
-    window.addEventListener('keydown', unlock);
+
+  // 必须从真实用户手势里调用。HTML audio 的 play() 立即执行，
+  // 避免 iOS Safari / 微信内置浏览器在 await 之后丢失手势授权。
+  unlock() {
+    this.unlocked = true;
+    this.applyPending();
+
+    const ctx = this.ensure();
+    if (ctx?.state === 'suspended') {
+      ctx.resume().then(() => this.prefetchSfx()).catch(error => console.warn('[EmberAudio] AudioContext resume failed', error));
+    } else {
+      this.prefetchSfx();
+    }
   }
+
+  init() {
+    const unlock = () => this.unlock();
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('touchstart', unlock, { passive: true });
+    window.addEventListener('click', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.unlocked) {
+        if (this.ctx?.state === 'suspended') this.ctx.resume().catch(() => {});
+        if (this.pending && (!this.bgmEl || this.bgmEl.paused)) this.applyPending();
+      }
+    });
+  }
+
   fetchBuffer(url) {
     if (this.buffers.has(url)) return Promise.resolve(this.buffers.get(url));
     if (this.fetching.has(url)) return this.fetching.get(url);
-    const task = fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status)))
+    const task = fetch(url, { cache: 'force-cache' })
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}: ${url}`)))
       .then(data => this.ctx ? this.ctx.decodeAudioData(data) : null)
-      .then(buf => { this.buffers.set(url, buf); return buf; })
-      .catch(() => null)
+      .then(buf => { if (buf) this.buffers.set(url, buf); return buf; })
+      .catch(error => { console.warn('[EmberAudio] SFX load failed', error); return null; })
       .finally(() => this.fetching.delete(url));
     this.fetching.set(url, task);
     return task;
   }
-  prefetch() {
+
+  prefetchSfx() {
     if (!this.ensure()) return;
-    Object.values(BGM_TRACKS).forEach(t => this.fetchBuffer(t.src));
     Object.values(SFX_FILES).forEach(url => this.fetchBuffer(url));
   }
+
   async play(name) {
     const url = SFX_FILES[name];
     const ctx = this.ensure();
-    if (!url || !ctx || ctx.state !== 'running') return;
+    if (!url || !ctx) return;
+    if (ctx.state === 'suspended' && this.unlocked) {
+      try { await ctx.resume(); } catch {}
+    }
+    if (ctx.state !== 'running') return;
     const buf = await this.fetchBuffer(url);
-    if (!buf || !this.ctx) return;
+    if (!buf || !this.ctx || !this.gains) return;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.connect(this.gains.sfx);
     src.start();
   }
-  setBgm(key) { this.pending = key; this.applyPending(); }
-  applyPending() {
-    const ctx = this.ctx;
-    if (!ctx || ctx.state !== 'running') return;
-    const key = this.pending;
-    if (key === this.current) return;
-    if (this.nodes) {
-      const { source, gain } = this.nodes;
-      this.nodes = null;
-      const t = ctx.currentTime;
-      gain.gain.cancelScheduledValues(t);
-      gain.gain.setValueAtTime(gain.gain.value, t);
-      gain.gain.linearRampToValueAtTime(0.0001, t + FADE);
-      source.stop(t + FADE + 0.1);
+
+  setBgm(key) {
+    this.pending = key;
+    this.applyPending();
+  }
+
+  stopBgm() {
+    if (this.bgmEl) {
+      try { this.bgmEl.pause(); } catch {}
+      this.bgmEl.src = '';
+      this.bgmEl = null;
     }
+    this.current = null;
+  }
+
+  applyPending() {
+    if (!this.unlocked) return;
+    const key = this.pending;
+
+    if (!key || !BGM_TRACKS[key]) {
+      this.stopBgm();
+      return;
+    }
+
+    if (this.current === key && this.bgmEl) {
+      this.applyVolumes();
+      if (this.bgmEl.paused) {
+        this.bgmEl.play().catch(error => console.warn('[EmberAudio] BGM resume blocked', error));
+      }
+      return;
+    }
+
+    if (this.bgmEl) {
+      try { this.bgmEl.pause(); } catch {}
+    }
+
+    const el = new Audio(BGM_TRACKS[key].src);
+    el.loop = true;
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    el.setAttribute('webkit-playsinline', '');
+    this.bgmEl = el;
     this.current = key;
-    if (!key || !BGM_TRACKS[key]) return;
-    this.fetchBuffer(BGM_TRACKS[key].src).then(buf => {
-      if (!buf || !this.ctx || this.current !== key) return;
-      const src = ctx.createBufferSource();
-      src.buffer = buf; src.loop = true;
-      const gain = ctx.createGain(); gain.gain.value = 0.0001;
-      src.connect(gain); gain.connect(this.gains.bgm);
-      src.start();
-      gain.gain.linearRampToValueAtTime(1, ctx.currentTime + FADE);
-      this.nodes = { source: src, gain };
+    this.applyVolumes();
+
+    el.addEventListener('error', () => {
+      console.warn('[EmberAudio] BGM load failed', key, el.error, el.currentSrc);
+    }, { once: true });
+
+    el.play().catch(error => {
+      console.warn('[EmberAudio] BGM play blocked', key, error);
     });
   }
-  // 每次渲染后调用：对比上一帧状态，驱动 BGM 切换与状态类音效。
+
   observe(s) {
     this.setBgm(bgmKeyFor(s));
     const prev = this.snapshot;
