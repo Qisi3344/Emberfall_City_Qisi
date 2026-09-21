@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, resolve } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { probeMcpServer } from './mcp-probe.mjs';
 
 const root = resolve(import.meta.dirname);
 const types = {
@@ -10,8 +11,20 @@ const types = {
 };
 createServer(async (req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  if (req.method === 'GET' && pathname === '/api/mcp-setup') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      .end(JSON.stringify({ transport: 'stdio', command: 'node', serverPath: join(root, 'mcp-server.mjs') }));
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/api/mcp-check') {
+    const result = await probeMcpServer(root);
+    res.writeHead(result.ok ? 200 : 503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      .end(JSON.stringify(result));
+    return;
+  }
   const file = resolve(join(root, pathname === '/' ? 'index.html' : pathname.slice(1)));
-  if (!file.startsWith(root + '\\') && file !== join(root, 'index.html')) {
+  const offset = relative(root, file);
+  if (offset === '..' || offset.startsWith('..' + sep) || isAbsolute(offset)) {
     res.writeHead(403).end(); return;
   }
   try {

@@ -51,6 +51,22 @@
 .set-row b{font-size:12px;color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
 .settings-panel .action{width:100%;min-height:40px;margin-top:9px}
 .settings-panel .set-toggle{margin-top:13px}
+.settings-panel{max-height:calc(100dvh - 44px);overflow-y:auto;overscroll-behavior:contain}
+.mcp-panel{padding:18px 17px;max-width:390px}
+.mcp-panel h2{margin:8px 0 7px}
+.mcp-intro,.mcp-note{margin:5px 0 11px!important;font-size:11px!important;line-height:1.55!important}
+.mcp-steps{padding-left:21px;margin:9px 0 14px;color:#bdc9ca;font-size:11px;line-height:1.6}
+.mcp-steps li{padding-left:3px;margin:0 0 6px}
+.mcp-panel a{color:var(--fire);text-underline-offset:2px}
+.mcp-panel code{color:#e7c198;font-size:10px}
+.mcp-field{display:block;margin:9px 0;color:var(--ice);font-size:10px;letter-spacing:.04em}
+.mcp-field input{display:block;width:100%;height:37px;margin-top:5px;padding:0 9px;border:1px solid #65777d;background:#151f23;color:var(--text);font:11px Consolas,monospace;letter-spacing:0}
+.mcp-field input:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
+.mcp-status{min-height:32px;margin:9px 0!important;padding:7px 8px;border:1px solid #485c62;background:#1a282d;color:#b6c9cc!important;font-size:10px!important;line-height:1.45!important}
+.mcp-config-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 6px;color:var(--ice);font-size:10px}
+.mcp-tabs{display:flex;gap:4px}.mcp-tabs button{padding:4px 8px;border:1px solid #516168;background:#1b272c;color:#b5c5c8;font-size:10px}.mcp-tabs button.active{border-color:#b2855a;color:#f0c99e}
+.mcp-config{max-height:180px;overflow:auto;margin:0 0 8px;padding:10px;border:1px solid #4a5b62;background:#10191d;color:#d6e3e5;font:10px/1.5 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
+.mcp-panel .action{margin-top:6px}
 .city-space.no-snow::before,.city-space.no-snow.storm::after{display:none}
 
 

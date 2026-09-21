@@ -9,6 +9,7 @@ import { newGame, act, advanceHours, weather, score, housing, availableWorkers, 
 
 const SERVER_INFO = { name: 'ember-city-mcp', version: '0.2.0' };
 const PROTOCOL_VERSION = '2024-11-05';
+const SERVER_INSTRUCTIONS = '这是余烬城的独立 MCP 对局，与浏览器存档不互通。先调用 get_game_state；若尚未开始，用 create_ruler 创建执政者。每次行动后可再次读取状态。遇到事件须用 choose_event_option 处理，再用 advance_time 推进时间。所有工具均遵守游戏规则与资源限制。';
 
 export const TOOLS = [
   { name: 'get_game_state', description: '获取当前完整可决策状态：资源、人口、温度、希望/不满、发电机、建筑、事件与局势。', inputSchema: { type: 'object', properties: {} } },
@@ -119,7 +120,7 @@ export function startServer(api = createApi()) {
   async function handle(msg) {
     const { id, method, params } = msg;
     if (method === 'initialize') {
-      send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || PROTOCOL_VERSION, capabilities: { tools: {} }, serverInfo: SERVER_INFO } });
+      send({ jsonrpc: '2.0', id, result: { protocolVersion: PROTOCOL_VERSION, capabilities: { tools: {} }, serverInfo: SERVER_INFO, instructions: SERVER_INSTRUCTIONS } });
       return;
     }
     if (method === 'ping') { send({ jsonrpc: '2.0', id, result: {} }); return; }

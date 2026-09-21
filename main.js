@@ -1,5 +1,6 @@
 import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score } from './game.js';
 import { audio } from './audio.js';
+import { mcpClientConfig } from './mcp-connect.js';
 
 const SAVE = 'ember-city-save-v1';
 const RANKS = 'ember-city-ranks-v1';
@@ -25,6 +26,14 @@ let panel = null;
 let selected = 2;
 let rankingsOpen = false;
 let settingsOpen = false;
+let mcpGuideOpen = false;
+let mcpCommand = 'node';
+let mcpServerPath = '';
+let mcpFormat = 'json';
+let mcpLocalAvailable = false;
+let mcpDetectedPath = '';
+let mcpCheckStatus = '';
+let mcpFeedback = '';
 let restartConfirm = false;
 let tutorialOpen = false;
 let tutorialStep = 0;
@@ -269,16 +278,53 @@ function overlayHtml() {
   if (state.mode === 'won' || state.mode === 'lost') return `<div class="overlay"><div class="ending"><div class="eyebrow">CITY ARCHIVE · FINAL REPORT</div><h1>${state.mode === 'won' ? '黎明仍在' : state.lossReason === 'exodus' ? '城市解体' : state.lossReason === 'riot' ? '统治终结' : state.lossReason === 'population' ? '无人守城' : '炉火熄灭'}</h1><div class="summary"><div>初始人口<b>${state.initialPopulation ?? 30}</b></div><div>剩余人口<b>${state.population}</b></div><div>死亡人数<b>${state.dead}</b></div><div>离城人数<b>${state.social.fled}</b></div><div>冻伤人数<b>${state.frostbite}</b></div><div>最低温度<b>${weather(state.day)}℃</b></div><div>最低希望<b>${state.lowestHope}</b></div><div>最高不满<b>${state.highestDiscontent}</b></div><div>最终煤炭<b>${fmt(state.resources.coal)}</b></div><div>最终得分<b>${score(state)}</b></div></div><p class="chronicle">${state.social.massExodus ? '发生大规模离城。' : ''}${state.social.riotEver ? '曾触发暴乱最后通牒。' : ''}执政者：${esc(state.playerName)}（${state.social.rulerStatus}）。这座城市签署了 ${state.laws.length} 条法令，建起 ${state.slots.filter(Boolean).length} 座建筑。${state.mode === 'won' ? '风暴散去，仍有人守着发电机。' : `城市在第 ${state.day} 天止步。`}</p><button class="action secondary" data-act="ranking">查看排名</button><button class="action" data-act="restart">再来一局</button></div></div>`;
   return '';
 }
+function mcpCanCheck() { return mcpLocalAvailable && mcpServerPath.trim() === mcpDetectedPath; }
+function mcpStatusText() {
+  if (!mcpClientConfig(mcpCommand, mcpServerPath)) return '请填写 Node 启动命令和 mcp-server.mjs 的本机绝对路径。';
+  if (mcpCanCheck()) return mcpCheckStatus || '已识别本地项目路径。可检测服务是否正常启动。';
+  return '配置已生成；请在 AI 客户端中确认工具列表。';
+}
+function mcpGuideHtml() {
+  const config = mcpClientConfig(mcpCommand, mcpServerPath);
+  const preview = config ? config[mcpFormat] : '填写本机 mcp-server.mjs 的绝对路径后生成配置。';
+  return `<div class="overlay settings"><section class="report settings-panel mcp-panel" aria-label="MCP 接入指南">
+    <div class="eyebrow">AI CONNECTION / STDIO</div><h2>连接 AI 客户端</h2>
+    <p class="mcp-intro">任何支持本地 STDIO MCP 服务器的 AI 客户端都能启动余烬城的工具服务。本地运行会自动填路径；在线网页需下载源码后手动填写。</p>
+    <ol class="mcp-steps"><li>在电脑上下载<a href="https://github.com/Qisi3344/Emberfall_City_Qisi/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">项目源码</a>并安装 <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>；解压后保留整个项目文件夹。</li><li>确认下方启动命令和 <code>mcp-server.mjs</code> 的本机绝对路径。</li><li>在 AI 客户端的 MCP 设置中新增 <b>STDIO</b> 服务器，名称填 <code>ember-city</code>。可使用下方 JSON / TOML 示例，或分别填写命令与参数。</li><li>保存并重启或刷新客户端；看到 <code>get_game_state</code>、<code>create_ruler</code> 等工具后，让 AI 创建执政者开始新局。</li></ol>
+    <label class="mcp-field">启动命令<input data-mcp-field="command" value="${esc(mcpCommand)}" spellcheck="false" autocomplete="off" aria-label="MCP 启动命令"></label>
+    <label class="mcp-field">参数 · 本机脚本绝对路径<input data-mcp-field="path" value="${esc(mcpServerPath)}" placeholder="例如 C:\\Games\\Emberfall_City_Qisi\\mcp-server.mjs" spellcheck="false" autocomplete="off" aria-label="MCP 服务器脚本绝对路径"></label>
+    <p class="mcp-status" role="status">${esc(mcpStatusText())} ${esc(mcpFeedback)}</p>
+    ${mcpLocalAvailable ? `<button class="action secondary" data-act="mcp-check" ${mcpCanCheck() ? '' : 'disabled'}>检测此项目 MCP 服务</button>` : ''}
+    <div class="mcp-config-head"><span>复制到客户端</span><div class="mcp-tabs" role="group" aria-label="配置格式"><button class="${mcpFormat === 'json' ? 'active' : ''}" data-act="mcp-json" aria-pressed="${mcpFormat === 'json'}">JSON</button><button class="${mcpFormat === 'toml' ? 'active' : ''}" data-act="mcp-toml" aria-pressed="${mcpFormat === 'toml'}">TOML</button></div></div>
+    <pre class="mcp-config" data-mcp-preview>${esc(preview)}</pre><button class="action secondary" data-act="mcp-copy" ${config ? '' : 'disabled'}>复制${mcpFormat.toUpperCase()}配置</button>
+    <p class="mcp-note">MCP 客户端会自行启动服务，无需另开终端运行。AI 对局与当前网页存档独立，共用同一套游戏规则。</p>
+    <button class="action secondary" data-act="mcp-back">返回设置</button>
+  </section></div>`;
+}
+async function loadMcpSetup() {
+  try {
+    const response = await fetch('./api/mcp-setup', { cache: 'no-store' });
+    if (!response.ok) return;
+    const setup = await response.json();
+    if (!setup.serverPath || !mcpGuideOpen) return;
+    mcpLocalAvailable = true;
+    mcpDetectedPath = setup.serverPath;
+    if (!mcpServerPath) mcpServerPath = setup.serverPath;
+    render();
+  } catch { /* GitHub Pages has no local setup endpoint. */ }
+}
 function settingsHtml() {
   if (!settingsOpen) return '';
+  if (mcpGuideOpen) return mcpGuideHtml();
   const p = audio.prefs;
   const vol = key => Math.round(p[key] * 100);
   const row = (key, label) => `<label class="set-row"><span>${label}</span><input type="range" min="0" max="100" step="1" value="${vol(key)}" data-vol="${key}" aria-label="${label}"><b data-vol-view="${key}">${vol(key)}</b></label>`;
-  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action secondary" data-act="tutorial-settings">教程 · 生存手册</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
+  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action secondary" data-act="tutorial-settings">教程 · 生存手册</button><button class="action secondary" data-act="settings-mcp">AI / MCP 接入指南</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
 }
 function render() {
   record();
   const scroll = app.querySelector('.sheet-body')?.scrollTop || 0;
+  const mcpScroll = app.querySelector('.mcp-panel')?.scrollTop || 0;
   const isDay = state.hour >= 6 && state.hour < 18;
   const homes = housing(state);
   const homeless = Math.max(0, state.population - homes);
@@ -297,6 +343,7 @@ function render() {
   citySpace.style.setProperty('--snow-delay', `${-performance.now() / 1000}s`);
   app.querySelector('.dayline small').textContent = `${state.hour.toString().padStart(2, '0')}:00 · ${isDay ? '白昼' : '黑夜'} · ${state.day === 20 ? '超级风暴' : state.day >= 17 ? '风暴逼近' : isDay ? '雪天' : '雪夜'}`;
   const body = app.querySelector('.sheet-body'); if (body) body.scrollTop = scroll;
+  const mcpPanel = app.querySelector('.mcp-panel'); if (mcpPanel) mcpPanel.scrollTop = mcpScroll;
   audio.observe(state);
 }
 function advance(count) {
@@ -318,8 +365,27 @@ app.addEventListener('click', event => {
   if (action === 'advance') { advance(6); return; }
   if (action === 'ranking') { rankingsOpen = true; render(); return; }
   if (action === 'back-ranking') { rankingsOpen = false; render(); return; }
-  if (action === 'settings') { settingsOpen = !settingsOpen; restartConfirm = false; render(); return; }
-  if (action === 'settings-close') { settingsOpen = false; restartConfirm = false; render(); return; }
+  if (action === 'settings') { settingsOpen = !settingsOpen; mcpGuideOpen = false; restartConfirm = false; render(); return; }
+  if (action === 'settings-close') { settingsOpen = false; mcpGuideOpen = false; restartConfirm = false; render(); return; }
+  if (action === 'settings-mcp') { mcpGuideOpen = true; mcpFeedback = ''; render(); loadMcpSetup(); return; }
+  if (action === 'mcp-back') { mcpGuideOpen = false; render(); return; }
+  if (action === 'mcp-json' || action === 'mcp-toml') { mcpFormat = action === 'mcp-json' ? 'json' : 'toml'; mcpFeedback = ''; render(); return; }
+  if (action === 'mcp-copy') {
+    const config = mcpClientConfig(mcpCommand, mcpServerPath);
+    if (!config) return;
+    navigator.clipboard.writeText(config[mcpFormat]).then(() => { mcpFeedback = '配置已复制。'; if (mcpGuideOpen) render(); })
+      .catch(() => { mcpFeedback = '复制失败，请手动选中配置。'; if (mcpGuideOpen) render(); });
+    return;
+  }
+  if (action === 'mcp-check') {
+    if (!mcpCanCheck()) return;
+    mcpCheckStatus = '正在启动并检查 MCP 服务…'; mcpFeedback = ''; render();
+    fetch('./api/mcp-check', { cache: 'no-store' }).then(response => response.json()).then(result => {
+      mcpCheckStatus = result.ok && result.hasGameTools ? `服务可启动 · 已发现 ${result.toolCount} 个工具。` : `检测失败：${result.message || '游戏工具未就绪。'}`;
+      if (mcpGuideOpen) render();
+    }).catch(() => { mcpCheckStatus = '检测失败：本地游戏服务不可用。'; if (mcpGuideOpen) render(); });
+    return;
+  }
   if (action === 'tutorial-intro') { tutorialSource = 'intro'; tutorialStep = 0; tutorialOpen = true; render(); return; }
   if (action === 'tutorial-settings') { tutorialSource = 'settings'; tutorialStep = 0; settingsOpen = false; tutorialOpen = true; render(); return; }
   if (action === 'tutorial-prev') { tutorialStep = Math.max(0, tutorialStep - 1); render(); return; }
@@ -336,7 +402,7 @@ app.addEventListener('click', event => {
   if (action === 'toggle-snow') { audio.setSnow(!audio.prefs.snow); render(); return; }
   if (action === 'settings-restart') {
     if (!restartConfirm) { restartConfirm = true; render(); return; }
-    settingsOpen = false; restartConfirm = false; tutorialOpen = false; tutorialStep = 0;
+    settingsOpen = false; mcpGuideOpen = false; restartConfirm = false; tutorialOpen = false; tutorialStep = 0;
     state = newGame(); draftName = platform.displayName || localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return;
   }
   if (action === 'restart') { tutorialOpen = false; tutorialStep = 0; state = newGame(); draftName = localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return; }
@@ -348,6 +414,22 @@ app.addEventListener('click', event => {
   else if (action === 'start' || action === 'power' || action === 'overdrive' || action === 'relief' || action === 'concession') dispatch({ type: action });
 });
 app.addEventListener('input', event => {
+  const field = event.target.dataset?.mcpField;
+  if (field) {
+    if (field === 'command') mcpCommand = event.target.value;
+    if (field === 'path') mcpServerPath = event.target.value;
+    mcpFeedback = ''; mcpCheckStatus = '';
+    const config = mcpClientConfig(mcpCommand, mcpServerPath);
+    const preview = app.querySelector('[data-mcp-preview]');
+    if (preview) preview.textContent = config ? config[mcpFormat] : '填写本机 mcp-server.mjs 的绝对路径后生成配置。';
+    const copy = app.querySelector('[data-act="mcp-copy"]');
+    if (copy) copy.disabled = !config;
+    const status = app.querySelector('.mcp-status');
+    if (status) status.textContent = mcpStatusText();
+    const check = app.querySelector('[data-act="mcp-check"]');
+    if (check) check.disabled = !mcpCanCheck();
+    return;
+  }
   const key = event.target.dataset?.vol;
   if (!key) return;
   audio.setVolume(key, Number(event.target.value) / 100);

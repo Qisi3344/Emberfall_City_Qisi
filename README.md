@@ -10,7 +10,7 @@
 npm run dev
 ```
 
-打开 <http://127.0.0.1:4173>。`npm test` 运行规则引擎的完整 20 天模拟、失败路径与 MCP 接口检查（共 9 项）。
+打开 <http://127.0.0.1:4173>。`npm test` 运行规则引擎的完整 20 天模拟、失败路径与 MCP 接口检查。
 
 ## 在线访问（GitHub Pages）
 
@@ -43,28 +43,39 @@ https://qisi3344.github.io/Emberfall_City_Qisi/
 
 ## 设置面板
 
-地图左上方“希望”下的 ⚙ 打开，打开期间游戏时间完全暂停：总音量 / BGM 音量 / 音效音量滑杆、雪花粒子开关、重新开始本局（二次确认）、返回。
+地图左上方“希望”下的 ⚙ 打开，打开期间游戏时间完全暂停：音量、雪花粒子、生存手册、AI / MCP 接入指南、重新开始本局（二次确认）与返回。
 
 ## MCP 游戏接口（`mcp-server.mjs`）
 
-支持 MCP 的 AI Agent 可像真人玩家一样游玩，**与真人 UI 共用同一套规则引擎**（`game.js` 的 `act` / `advanceHours`），所有校验都在引擎内部完成，Agent 无法直接改数值或绕过资源消耗。排行榜记录与真人同格式、不区分人与 AI。
+任何支持本地 **STDIO MCP** 的 AI 客户端都可以连接。MCP 对局与浏览器当前对局分别运行，但**共用同一套规则引擎**（`game.js` 的 `act` / `advanceHours`）。所有校验都在引擎内部完成，Agent 无法直接改数值或绕过资源消耗。排行榜记录与真人同格式、不区分人与 AI。
 
-```bash
-npm run mcp   # stdio 启动
-```
+1. 在运行 AI 客户端的电脑上安装 Node.js，并下载或克隆完整项目。
+2. 在游戏设置中打开“AI / MCP 接入指南”。用 `npm run dev` 运行本地游戏时，页面会自动填入 `mcp-server.mjs` 的绝对路径，还可以点击“检测本地 MCP 服务”验证握手和工具列表。在线静态页面无法读取本机文件路径，需要手动填写。
+3. 在 AI 客户端新增 STDIO MCP 服务器，名称 `ember-city`，启动命令 `node`，参数为本机 `mcp-server.mjs` 的**绝对路径**。设置页可复制 JSON 或 TOML 示例；其他客户端可直接填写相同的命令与参数。
+4. 保存并重启或刷新 AI 客户端。看到 `get_game_state`、`create_ruler` 等工具后，让 AI 创建执政者开始一局。客户端会自行启动 MCP 进程，不需要预先运行 `npm run mcp`。
 
-客户端配置示例（如 Claude Desktop / ZCode 等）：
+使用 `mcpServers` 格式的客户端配置示例：
 
 ```json
 {
   "mcpServers": {
     "ember-city": {
       "command": "node",
-      "args": ["<项目路径>/mcp-server.mjs"]
+      "args": ["<本机项目绝对路径>/mcp-server.mjs"]
     }
   }
 }
 ```
+
+使用 TOML MCP 配置的客户端可以添加：
+
+```toml
+[mcp_servers.ember-city]
+command = "node"
+args = ["<本机项目绝对路径>/mcp-server.mjs"]
+```
+
+调试时可以手动运行 `npm run mcp`，服务通过标准输入 / 输出交换 MCP JSON-RPC 消息；标准输出不包含普通日志。
 
 工具：`get_game_state`、`create_ruler`、`build`、`upgrade_building`、`demolish_building`、`assign_workers`、`research`、`sign_law`、`choose_event_option`、`toggle_generator`、`toggle_overdrive`、`issue_relief`、`make_concession`、`advance_time`、`get_result`。终局首次 `get_result` 会把战绩写入 `output/agent-ranks.json`（与浏览器战绩同一 schema，无人机标识字段）。
 
