@@ -129,7 +129,7 @@ class EmberAudio {
     }
     this.current = key;
     if (!key || !BGM_TRACKS[key]) return;
-    this.fetchBuffer(BGM_TRACKS[key]).then(buf => {
+    this.fetchBuffer(BGM_TRACKS[key].src).then(buf => {
       if (!buf || !this.ctx || this.current !== key) return;
       const src = ctx.createBufferSource();
       src.buffer = buf; src.loop = true;
@@ -150,7 +150,7 @@ class EmberAudio {
     if (!prev.on && s.generator.on) this.play('furnace');
     if (s.event && s.event !== prev.event) this.play(s.event === 'riotUltimatum' || s.event === 'despair' ? 'alarm' : 'popup');
     if (s.laws.length > prev.laws) this.play('stamp');
-    if (s.buildings > prev.buildings) this.play('complete');
+    if (this.snapshot.buildings > prev.buildings) this.play('complete');
   }
 }
 
