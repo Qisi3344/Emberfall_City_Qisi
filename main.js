@@ -26,6 +26,9 @@ let selected = 2;
 let rankingsOpen = false;
 let settingsOpen = false;
 let restartConfirm = false;
+let tutorialOpen = false;
+let tutorialStep = 0;
+let tutorialSource = 'settings';
 let notice = '';
 let noticeError = false;
 let elapsed = 0;
@@ -43,6 +46,44 @@ const ICONS = {
   laws: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
   city: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>',
 };
+const TUTORIAL = [
+  {
+    code: '01 / SURVIVE',
+    title: '你的目标：撑过二十天',
+    text: '余烬城的核心不是把城市铺满，而是让人活着、让炉火不断。第 20 天超级风暴抵达，只要还有居民且发电机仍在运行，你就撑过去了。',
+    facts: [['20 DAY', '最终风暴'], ['核心炉', '不能长时间熄火'], ['人口', '死亡或离城都会减少']]
+  },
+  {
+    code: '02 / RESOURCES',
+    title: '先看四种资源',
+    text: '煤炭维持发电机，木材和钢材用于建造与研究，食物每天清晨结算。资源数字变暖色时，说明储备已经危险。',
+    facts: [['煤炭', '炉火燃料'], ['木材 / 钢材', '建造与研究'], ['食物', '每天清晨消耗']]
+  },
+  {
+    code: '03 / BUILD & STAFF',
+    title: '建筑建完，还得有人工作',
+    text: '点击地图空槽建造。煤矿、猎人站、工坊、医务所等建筑不会自动运行，还要在「人员」里分配工人。没有工人就没有产出。',
+    facts: [['煤矿', '持续补煤'], ['猎人站', '清晨带回食物'], ['工坊', '工作时产生研究点']]
+  },
+  {
+    code: '04 / COLD',
+    title: '寒冷会变成病患',
+    text: '天气会一天比一天冷。住房不足、住宅温度过低、饥饿都会增加病患。医务所必须有人值守才能治疗。',
+    facts: [['住房', '人口超过容量会受冻'], ['温度', '越冷越容易生病'], ['医务所', '需要分配工人']]
+  },
+  {
+    code: '05 / RESEARCH',
+    title: '工坊决定城市能长多大',
+    text: '开局只能使用第一环。工坊积累研究点后，可以研究供暖范围 II / III，开放第二、第三环；也能升级炉温、住宅保温和煤矿效率。',
+    facts: [['第一环', '开局可用'], ['范围 II / III', '解锁更多建筑槽'], ['炉温 / 保温', '对抗后期低温']]
+  },
+  {
+    code: '06 / PEOPLE',
+    title: '数字背后是人',
+    text: '希望过低会有人谈论离开，持续恶化会真的出走；不满过高会抗议甚至发出最后通牒。难民、疾病、住房和法令会不断改变城市状态。',
+    facts: [['希望 ↓', '离城风险'], ['不满 ↑', '抗议 / 暴乱'], ['城市报告', '必须作出决定']]
+  }
+];
 function save() { localStorage.setItem(SAVE, JSON.stringify(state)); }
 function record() {
   if (state.recorded || !['won', 'lost'].includes(state.mode)) return;
@@ -142,10 +183,28 @@ function sheetHtml() {
   const code = ({ slot: 'SITE', build: 'BUILD', staff: 'STAFF', laws: 'LAW', city: 'CITY', research: 'TECH', generator: 'CORE', ranking: 'ARCHIVE' })[panel] || 'CITY';
   return `<section class="sheet" aria-label="${content.title}"><div class="sheet-grip" aria-hidden="true"></div><div class="sheet-head"><div><span class="sheet-kicker">${code}</span><strong>${content.title}</strong><small>${content.subtitle}</small></div><button class="close" data-act="close" aria-label="关闭面板">×</button></div><div class="sheet-body">${content.body}</div></section>`;
 }
+function tutorialHtml() {
+  if (!tutorialOpen) return '';
+  const page = TUTORIAL[tutorialStep];
+  const last = tutorialStep === TUTORIAL.length - 1;
+  const fromIntro = tutorialSource === 'intro';
+  return `<div class="overlay tutorial-overlay"><section class="tutorial-card" aria-label="生存教程">
+    <div class="tutorial-top"><div><span class="tutorial-code">${page.code}</span><div class="eyebrow">SURVIVAL HANDBOOK</div></div><span class="tutorial-count">${tutorialStep + 1} / ${TUTORIAL.length}</span></div>
+    <div class="tutorial-progress">${TUTORIAL.map((_,i) => `<i class="${i <= tutorialStep ? 'done' : ''}"></i>`).join('')}</div>
+    <h2>${page.title}</h2>
+    <p>${page.text}</p>
+    <div class="tutorial-facts">${page.facts.map(([a,b]) => `<div><b>${a}</b><span>${b}</span></div>`).join('')}</div>
+    <div class="tutorial-actions">
+      <button class="action secondary" data-act="tutorial-prev" ${tutorialStep === 0 ? 'disabled' : ''}>上一步</button>
+      ${!last ? '<button class="action" data-act="tutorial-next">下一步</button>' : `<button class="action" data-act="${fromIntro ? 'tutorial-start' : 'tutorial-close'}">${fromIntro ? '开始执政' : '看完了'}</button>`}
+    </div>
+    <button class="tutorial-exit" data-act="tutorial-close">${fromIntro ? '返回开场' : '返回设置'}</button>
+  </section></div>`;
+}
 function overlayHtml() {
   if (rankingsOpen) return `<div class="overlay"><div class="report"><div class="eyebrow">LOCAL RECORDS</div><h2>本机排名</h2><p>当前仅保存本机战绩；联网排行榜属于后续版本。</p><div style="max-height:45vh;overflow:auto">${rankingPanel().body}</div><button class="action secondary" data-act="back-ranking" style="margin-top:12px;width:100%">返回结算</button></div></div>`;
   if (state.mode === 'naming') return `<div class="overlay"><div class="intro naming"><img class="naming-logo" src="./assets/logo/logo100.png" alt="余烬之城"><div class="eyebrow">THE LAST HEARTH · 00</div><h1>执政者命名</h1><p>为这次执政留下名字。</p><form id="ruler-form" novalidate><label for="ruler-name">执政者姓名</label><input id="ruler-name" name="ruler-name" type="text" maxlength="24" autocomplete="off" value="${esc(draftName)}" aria-describedby="name-hint${nameError ? ' name-error' : ''}"><small id="name-hint">2～12 个字符，可在开始前更改。</small>${nameError ? `<small id="name-error" class="name-error" role="alert">${esc(nameError)}</small>` : ''}<button class="action" type="submit">确认姓名 · 阅读开场</button></form></div></div>`;
-  if (state.mode === 'intro') return `<div class="overlay"><div class="intro"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p>旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。</p><p class="lead">这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。</p><button class="action" data-act="start">点燃发电机 · 开始执政</button></div></div>`;
+  if (state.mode === 'intro') return `<div class="overlay"><div class="intro"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p>旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。</p><p class="lead">这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。</p><div class="intro-choice-row"><button class="action" data-act="start">开始执政</button><button class="action secondary" data-act="tutorial-intro">进入教程</button></div></div></div>`;
   if (state.event) {
     const event = EVENTS[state.event];
     const flight = state.event === 'exodus' && state.social.lastFlight;
@@ -174,7 +233,7 @@ function settingsHtml() {
   const p = audio.prefs;
   const vol = key => Math.round(p[key] * 100);
   const row = (key, label) => `<label class="set-row"><span>${label}</span><input type="range" min="0" max="100" step="1" value="${vol(key)}" data-vol="${key}" aria-label="${label}"><b data-vol-view="${key}">${vol(key)}</b></label>`;
-  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
+  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action secondary" data-act="tutorial-settings">教程 · 生存手册</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
 }
 function render() {
   record();
@@ -185,7 +244,7 @@ function render() {
   const phaseClass = state.day >= 17 ? 'late-game' : state.day >= 10 ? 'mid-game' : 'early-game';
   const weatherLabel = state.day === 20 ? '超级风暴' : state.day >= 17 ? '风暴逼近' : isDay ? '雪天' : '雪夜';
   const resources = Object.entries(state.resources).map(([key,value]) => `<div class="resource ${value < (key === 'coal' ? 30 : key === 'food' ? 15 : 10) ? 'low' : ''}"><img src="./assets/resources/${key}.png" alt="" width="26" height="26"><div class="resource-copy"><span>${resName[key]}</span><strong>${fmt(value)}</strong></div></div>`).join('');
-  app.innerHTML = `<main class="app ${phaseClass}"><header class="top"><div class="brand"><span>EMBERFALL CITY / 余烬城</span><strong>20 DAYS BELOW</strong></div><div class="dayline"><div class="day-main"><span class="hud-kicker">DAY</span><strong>${String(state.day).padStart(2,'0')}</strong><small>${state.hour.toString().padStart(2,'0')}:00 · ${weatherLabel}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}"><small>TEMP</small><b>${weather(state.day)}℃</b></div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b><i>住房 ${homes}</i></span><span>可用 <b>${availableWorkers(state)}</b><i class="${state.sick ? 'warn-text' : ''}">病患 ${state.sick}</i>${homeless ? `<i class="danger-text">无家可归 ${homeless}</i>` : ''}</span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space"><img class="city-bg" src="${isDay ? './assets/city-day.png?v=2' : './assets/city-night.png?v=2'}" alt="" aria-hidden="true">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><span>TIME CONTROL</span><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停') : '等待指令'}</small></div><div class="speed-cluster"><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button></div><button class="time-btn" data-act="advance">+6H</button></div><nav class="nav" aria-label="主要导航">${[['build','建造'],['staff','人员'],['laws','法令'],['city','城市']].map(([id,label]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span class="nav-icon">${ICONS[id]}</span><em>${label}</em></button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}</main>`;
+  app.innerHTML = `<main class="app ${phaseClass}"><header class="top"><div class="brand"><span>EMBERFALL CITY / 余烬城</span><strong>20 DAYS BELOW</strong></div><div class="dayline"><div class="day-main"><span class="hud-kicker">DAY</span><strong>${String(state.day).padStart(2,'0')}</strong><small>${state.hour.toString().padStart(2,'0')}:00 · ${weatherLabel}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}"><small>TEMP</small><b>${weather(state.day)}℃</b></div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b><i>住房 ${homes}</i></span><span>可用 <b>${availableWorkers(state)}</b><i class="${state.sick ? 'warn-text' : ''}">病患 ${state.sick}</i>${homeless ? `<i class="danger-text">无家可归 ${homeless}</i>` : ''}</span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space"><img class="city-bg" src="${isDay ? './assets/city-day.png?v=2' : './assets/city-night.png?v=2'}" alt="" aria-hidden="true">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><span>TIME CONTROL</span><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停') : '等待指令'}</small></div><div class="speed-cluster"><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button></div><button class="time-btn" data-act="advance">+6H</button></div><nav class="nav" aria-label="主要导航">${[['build','建造'],['staff','人员'],['laws','法令'],['city','城市']].map(([id,label]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span class="nav-icon">${ICONS[id]}</span><em>${label}</em></button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}${tutorialHtml()}</main>`;
   app.querySelector('.bottom-controls').insertAdjacentHTML('beforebegin', socialAlertsHtml());
   const citySpace = app.querySelector('.city-space');
   citySpace.insertAdjacentHTML('afterbegin', mapToolsHtml());
@@ -200,7 +259,7 @@ function render() {
   audio.observe(state);
 }
 function advance(count) {
-  if (settingsOpen) return;
+  if (settingsOpen || tutorialOpen) return;
   const moved = advanceHours(state, count);
   if (moved) { state.speed = state.event || state.mode !== 'playing' ? 0 : state.speed; save(); render(); }
 }
@@ -219,13 +278,26 @@ app.addEventListener('click', event => {
   if (action === 'back-ranking') { rankingsOpen = false; render(); return; }
   if (action === 'settings') { settingsOpen = !settingsOpen; restartConfirm = false; render(); return; }
   if (action === 'settings-close') { settingsOpen = false; restartConfirm = false; render(); return; }
+  if (action === 'tutorial-intro') { tutorialSource = 'intro'; tutorialStep = 0; tutorialOpen = true; render(); return; }
+  if (action === 'tutorial-settings') { tutorialSource = 'settings'; tutorialStep = 0; settingsOpen = false; tutorialOpen = true; render(); return; }
+  if (action === 'tutorial-prev') { tutorialStep = Math.max(0, tutorialStep - 1); render(); return; }
+  if (action === 'tutorial-next') { tutorialStep = Math.min(TUTORIAL.length - 1, tutorialStep + 1); render(); return; }
+  if (action === 'tutorial-close') {
+    tutorialOpen = false; tutorialStep = 0;
+    if (tutorialSource === 'settings') settingsOpen = true;
+    render(); return;
+  }
+  if (action === 'tutorial-start') {
+    tutorialOpen = false; tutorialStep = 0; tutorialSource = 'settings';
+    dispatch({ type: 'start' }); return;
+  }
   if (action === 'toggle-snow') { audio.setSnow(!audio.prefs.snow); render(); return; }
   if (action === 'settings-restart') {
     if (!restartConfirm) { restartConfirm = true; render(); return; }
-    settingsOpen = false; restartConfirm = false;
+    settingsOpen = false; restartConfirm = false; tutorialOpen = false; tutorialStep = 0;
     state = newGame(); draftName = platform.displayName || localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return;
   }
-  if (action === 'restart') { state = newGame(); draftName = localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return; }
+  if (action === 'restart') { tutorialOpen = false; tutorialStep = 0; state = newGame(); draftName = localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return; }
   if (action === 'build') dispatch({ type: 'build', index: selected, building: id });
   else if (action === 'staff') dispatch({ type: 'staff', index: Number(button.dataset.index ?? selected), delta: Number(button.dataset.delta) });
   else if (action === 'upgrade' || action === 'demolish') dispatch({ type: action, index: selected });
@@ -248,11 +320,11 @@ app.addEventListener('submit', event => {
   dispatch({ type: 'confirmName', name: draftName, playerId });
 });
 setInterval(() => {
-  if (settingsOpen || state.mode !== 'playing' || !state.speed || state.event) return;
+  if (settingsOpen || tutorialOpen || state.mode !== 'playing' || !state.speed || state.event) return;
   elapsed += 100;
   if (elapsed >= 4000 / state.speed) { elapsed = 0; advance(1); }
 }, 100);
-window.advanceTime = ms => { if (settingsOpen || state.mode !== 'playing' || !state.speed) return; elapsed += ms; while (elapsed >= 4000 / state.speed && state.mode === 'playing' && !state.event) { elapsed -= 4000 / state.speed; advance(1); } };
+window.advanceTime = ms => { if (settingsOpen || tutorialOpen || state.mode !== 'playing' || !state.speed) return; elapsed += ms; while (elapsed >= 4000 / state.speed && state.mode === 'playing' && !state.event) { elapsed -= 4000 / state.speed; advance(1); } };
 window.render_game_to_text = () => JSON.stringify({ coordinateSystem: '24 slots: 0-5 inner, 6-13 middle, 14-23 outer; map percentages from top-left', mode: state.mode, playerId: state.playerId, playerName: state.playerName, day: state.day, hour: state.hour, weather: weather(state.day), resources: state.resources, population: state.population, sick: state.sick, hope: state.hope, discontent: state.discontent, social: state.social, lossReason: state.lossReason, generator: state.generator, researchPoints: state.researchPoints, researched: state.researched, laws: state.laws, event: state.event, selected, panel, buildings: state.slots.map((b,i) => b ? { slot: i, ...b } : null).filter(Boolean) });
 document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'f' && !event.repeat && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
