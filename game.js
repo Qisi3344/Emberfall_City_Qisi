@@ -28,7 +28,7 @@ export const LAWS = {
   shelter: { name: '儿童庇护', note: '解锁儿童庇护所，提升希望', hope: 7, discontent: 0, excludes: 'childWork' },
   childWork: { name: '儿童劳动', note: '最多让 3 名儿童加入劳动力；每日希望 −1、不满 +1，严寒时儿童更易生病', hope: -10, discontent: 5, excludes: 'shelter' },
   venue: { name: '公共娱乐', note: '解锁夜间会所', hope: 0, discontent: -3 },
-  forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，长期增加不满', hope: -14, discontent: -8 },
+  forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，立即并持续增加不满', hope: -14, discontent: 12 },
 };
 
 export const EVENTS = {
@@ -113,7 +113,7 @@ const round = v => Math.round(v * 10) / 10;
 const costText = cost => Object.entries(cost).map(([key, value]) => `${{ coal: '煤', wood: '木', steel: '钢', food: '食' }[key]} ${value}`).join(' · ');
 export { costText };
 
-export const newSocial = () => ({ leavingIntent: 0, lowHopeHours: 0, exodusState: 'none', despairDeadline: null, riotState: 'none', riotDeadline: null, aftermathHours: 0, fled: 0, massExodus: false, riotEver: false, rulerStatus: '继续执政', lastFlight: null, lastReliefDay: 0, lastConcessionDay: 0 });
+export const newSocial = () => ({ leavingIntent: 0, lowHopeHours: 0, exodusState: 'none', despairDeadline: null, riotState: 'none', riotDeadline: null, aftermathHours: 0, fled: 0, massExodus: false, riotEver: false, rulerStatus: '继续执政', lastFlight: null, lastReliefDay: 0, lastConcessionDay: 0, calmHours: 0, stableOrder: false });
 
 export function weather(day) {
   if (day <= 2) return -20;
@@ -240,6 +240,8 @@ function showNextEvent(s, allowPaused = false) {
 }
 function syncSocial(s) {
   const c = s.social;
+  c.calmHours ??= 0;
+  c.stableOrder ??= false;
   if (c.riotDeadline !== null && s.discontent < 75) {
     c.riotDeadline = null; c.aftermathHours = 24; note(s, '居民撤回最后通牒，城中仍留有余波。');
   }
@@ -284,6 +286,17 @@ function flee(s, count) {
 }
 function tickSocial(s) {
   const c = s.social;
+  c.calmHours ??= 0;
+  c.stableOrder ??= false;
+  if (s.discontent <= 10) {
+    c.calmHours++;
+    if (c.calmHours >= 6) c.stableOrder = true;
+  } else if (s.discontent > 15) {
+    c.calmHours = 0;
+    c.stableOrder = false;
+  } else if (!c.stableOrder) {
+    c.calmHours = 0;
+  }
   if (c.aftermathHours > 0) c.aftermathHours--;
   if (c.riotDeadline !== null) {
     if (s.discontent < 75) syncSocial(s);
@@ -447,7 +460,7 @@ function daily(s) {
   const deaths = Math.min(s.sick, Math.max(0, Math.floor((s.sick - s.population * 0.27) / 5)) + Math.floor(missing / 8));
   s.sick -= deaths; s.population -= deaths; s.dead += deaths;
   normalizeStaffing(s);
-  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0) - (s.laws.includes('childWork') ? 1 : 0);
+  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0) - (s.laws.includes('childWork') ? 1 : 0) + (s.social.stableOrder ? 1 : 0);
   s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.laws.includes('childWork') ? 1 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
   updateExtremes(s);
@@ -500,7 +513,7 @@ export function advanceHours(s, count = 1) {
         const b = s.slots[i]; if (!b || !b.workers) continue;
         const outside = ['coal', 'saw', 'steel'].includes(b.type);
         if (outside && s.day === 20) continue;
-        const rate = b.workers / BUILDINGS[b.type].workers * labor * (s.day === 19 && outside ? 0.5 : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * (s.laws.includes('forcedWork') ? 1.1 : 1);
+        const rate = b.workers / BUILDINGS[b.type].workers * labor * (s.day === 19 && outside ? 0.5 : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * (s.laws.includes('forcedWork') ? 1.1 : 1) * (s.social.stableOrder ? 1.05 : 1);
         const key = { coal: 'coal', saw: 'wood', steel: 'steel', greenhouse: 'food' }[b.type];
         const amount = { coal: 5, saw: 3, steel: 1.8, greenhouse: buildingHeat(s, i) < -25 ? 0 : 2.2 }[b.type] || 0;
         if (key) s.resources[key] = Math.min(storageLimit(s), round(s.resources[key] + amount * rate * b.level * (b.type === 'coal' && s.researched.includes('coalEfficiency') ? 1.3 : 1)));
