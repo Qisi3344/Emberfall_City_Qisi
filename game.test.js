@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, score } from './game.js';
+import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, score } from './game.js';
 const start = s => {
   assert.equal(act(s, { type: 'confirmName', name: '测试执政者', playerId: 'test-player-id' }).ok, true);
   assert.equal(act(s, { type: 'start' }).ok, true);
@@ -343,4 +343,30 @@ test('forced labor immediately raises discontent instead of lowering it', () => 
   const before = s.discontent;
   assert.equal(act(s, { type: 'law', id: 'forcedWork' }).ok, true);
   assert.equal(s.discontent, before + 12);
+});
+
+
+test('survival event decisions require real tradeoffs instead of a free positive answer', () => {
+  const ids = [10, 14, 17, 'foodProblem', 'foodRiot', 'healthcareProblem', 'healthcareOverload', 'healthcareProtest', 'housingProblem', 'coldHomes', 'coldHomesProtest', 'leavingTalk', 'protest', 'riotUltimatum'];
+  for (const id of ids) {
+    const choices = EVENTS[id].choices;
+    assert.ok(choices.length >= 3, `${id} should offer at least three distinct responses`);
+    for (const choice of choices) {
+      const values = Object.values(choice.effect);
+      assert.ok(values.some(value => value < 0) || values.some(value => value > 0 && ['sick','discontent'].some(key => (choice.effect[key] ?? 0) > 0)), `${id} / ${choice.label} should carry a cost or risk`);
+    }
+  }
+});
+
+test('resource-heavy event choices cannot be taken without the required stock', () => {
+  const s = newGame();
+  start(s);
+  s.event = 'coldHomes';
+  s.resources.coal = 0;
+  const before = { hope: s.hope, discontent: s.discontent };
+  const response = act(s, { type: 'event', choice: 0 });
+  assert.equal(response.ok, false);
+  assert.equal(s.event, 'coldHomes');
+  assert.equal(s.hope, before.hope);
+  assert.equal(s.discontent, before.discontent);
 });
