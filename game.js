@@ -231,9 +231,52 @@ export function newGame() {
 export const ringOf = index => index < 6 ? 1 : index < 14 ? 2 : 3;
 export const housing = s => s.slots.reduce((n, b) => n + (b?.type === 'house' ? [0, 10, 15, 20][b.level] : 0), 0);
 export const assigned = s => s.slots.reduce((n, b) => n + (b?.workers || 0), 0);
-export const childLaborers = s => s.laws.includes('childWork') ? Math.min(3, Math.max(0, s.children)) : 0;
+const signedLawDefs = s => s.laws.map(id => LAWS[id]).filter(Boolean);
+const lawProduct = (s, key) => signedLawDefs(s).reduce((value, law) => value * (law[key] ?? 1), 1);
+const lawSum = (s, key) => signedLawDefs(s).reduce((value, law) => value + (law[key] ?? 0), 0);
+const lawMax = (s, key, fallback) => signedLawDefs(s).reduce((value, law) => Math.max(value, law[key] ?? value), fallback);
+
+export const childLaborers = s => {
+  const cap = lawMax(s, 'childCap', 0);
+  return cap ? Math.min(cap, Math.max(0, s.children)) : 0;
+};
 export const workforce = s => Math.max(0, s.population - s.children - s.sick + childLaborers(s));
 export const availableWorkers = s => Math.max(0, workforce(s) - assigned(s));
+
+function lawConditionMet(s, id) {
+  switch (id) {
+    case 'strictRations': return s.resources.food < s.population * 1.5;
+    case 'careRations': return s.sick >= Math.max(3, Math.ceil(s.population * 0.1));
+    case 'finalRations': return s.resources.food < s.population * 2;
+    case 'productionQuota': return ['coal','wood','steel'].some(key => s.resources[key] < 20);
+    case 'mobilization': return s.hope >= 25;
+    case 'hazardChild': return availableWorkers(s) <= 3;
+    case 'protectEveryone': return s.sick >= Math.max(3, Math.ceil(s.population * 0.15));
+    case 'nightWatch': return s.discontent >= 60;
+    case 'openCouncil': return s.hope >= 35 && s.discontent >= 35 && s.discontent <= 70;
+    case 'martialLaw': return s.discontent >= 90;
+    case 'universalRelief': return s.hope <= 15;
+    default: return true;
+  }
+}
+export function lawState(s, id) {
+  const law = LAWS[id];
+  if (!law) return { status: 'hidden', reason: '' };
+  if (s.laws.includes(id)) return { status: 'signed', reason: '已签署' };
+  if (law.excludes && s.laws.includes(law.excludes)) return { status: 'blocked', reason: `与「${LAWS[law.excludes].name}」互斥` };
+  if (law.requires && !s.laws.includes(law.requires)) return { status: 'locked', reason: `需先签署「${LAWS[law.requires].name}」` };
+  if (s.day < (law.day ?? 1)) return { status: 'locked', reason: `第 ${law.day} 天解锁` };
+  if (!lawConditionMet(s, id)) return { status: 'locked', reason: law.conditionText || '城市状态尚未满足' };
+  return { status: 'available', reason: '可签署' };
+}
+export function lawVisibility(s, id) {
+  const law = LAWS[id];
+  if (!law) return 'hidden';
+  if (s.laws.includes(id) || !law.requires || s.laws.includes(law.requires)) return 'visible';
+  const parent = LAWS[law.requires];
+  if (parent && (!parent.requires || s.laws.includes(parent.requires))) return 'shadow';
+  return 'hidden';
+}
 
 // 人口减少、生病或离城后，旧岗位分配可能超过当前健康劳动力。
 // 自动释放超额岗位，避免出现“所有建筑都减到 0 仍无法重新派人”的软锁。
@@ -248,12 +291,12 @@ function normalizeStaffing(s) {
     excess -= release;
   }
 }
-export const storageLimit = s => 300 + s.slots.filter(b => b?.type === 'storage').length * 200;
+export const storageLimit = s => 300 + s.slots.filter(b => b?.type === 'storage').length * 200 + lawSum(s, 'storageBonus');
 export const buildingHeat = (s, index) => weather(s.day) + (s.generator.on ? s.generator.power * 23 + (s.generator.overdrive ? 16 : 0) : 0) + [0, 10, 3, -4][ringOf(index)] + (s.slots[index]?.type === 'house' ? (s.slots[index].level - 1) * 5 + (s.researched.includes('insulation') ? 8 : 0) : 0);
 export function heatLabel(value) {
   return value >= 8 ? '舒适' : value >= 0 ? '宜居' : value >= -12 ? '微冷' : value >= -25 ? '寒冷' : value >= -40 ? '严寒' : '极寒';
 }
-export const coalPerHour = s => (s.generator.on ? [0, 1, 1.8, 2.8][s.generator.power] * (s.day === 20 ? 2 : 1) + (s.generator.overdrive ? 0.3 : 0) : 0);
+export const coalPerHour = s => (s.generator.on ? ([0, 1, 1.8, 2.8][s.generator.power] * (s.day === 20 ? 2 : 1) + (s.generator.overdrive ? 0.3 : 0)) * lawProduct(s, 'coalMult') : 0);
 
 function canPay(s, cost) { return Object.entries(cost).every(([key, value]) => s.resources[key] >= value); }
 function pay(s, cost) { for (const [key, value] of Object.entries(cost)) s.resources[key] = round(s.resources[key] - value); }
@@ -275,7 +318,7 @@ function queueOnce(s, id) {
 function queueEvent(s, id) { if (s.event !== id && !s.eventQueue.includes(id)) s.eventQueue.push(id); }
 function showNextEvent(s, allowPaused = false) {
   if (s.event || s.mode !== 'playing' || (!allowPaused && s.speed === 0)) return;
-  s.eventQueue = s.eventQueue.filter(id => id !== 'despair' || s.social.despairDeadline !== null).filter(id => id !== 'riotUltimatum' || s.social.riotDeadline !== null).filter(id => id !== 'leavingTalk' || s.social.exodusState !== 'none').filter(id => id !== 'protest' || s.discontent >= 80);
+  s.eventQueue = s.eventQueue.filter(id => id !== 'despair' || s.social.despairDeadline !== null).filter(id => id !== 'riotUltimatum' || s.social.riotDeadline !== null).filter(id => id !== 'leavingTalk' || s.social.exodusState !== 'none').filter(id => id !== 'protest' || s.discontent >= lawMax(s, 'protestThreshold', 80));
   s.eventQueue.sort((a, b) => (eventPriority[a] ?? 5) - (eventPriority[b] ?? 5));
   s.event = s.eventQueue.shift() ?? null;
 }
@@ -291,7 +334,9 @@ function syncSocial(s) {
     c.riotDeadline = 48; c.riotEver = true; queueEvent(s, 'riotUltimatum'); note(s, '城市发出 48 小时最后通牒！');
   }
   const previousRiot = c.riotState;
-  c.riotState = c.riotDeadline !== null ? 'ultimatum' : s.discontent >= 95 ? 'warning' : s.discontent >= 80 ? 'protest' : 'none';
+  const protestAt = lawMax(s, 'protestThreshold', 80);
+  const warningAt = lawMax(s, 'warningThreshold', 95);
+  c.riotState = c.riotDeadline !== null ? 'ultimatum' : s.discontent >= warningAt ? 'warning' : s.discontent >= protestAt ? 'protest' : 'none';
   if (previousRiot === 'none' && (c.riotState === 'protest' || c.riotState === 'warning')) queueEvent(s, 'protest');
   if (s.hope === 0 && c.despairDeadline === null && !c.massExodus) {
     c.despairDeadline = 24; queueEvent(s, 'despair'); note(s, '城门前出现离城人群，只有 24 小时可以挽回。');
@@ -409,9 +454,14 @@ export function act(s, action) {
     }
     case 'law': {
       const law = LAWS[action.id];
-      if (!law || s.laws.includes(action.id) || (law.excludes && s.laws.includes(law.excludes))) return result(false, '该法令不可签署。');
+      const state = lawState(s, action.id);
+      if (!law || state.status !== 'available') return result(false, state.reason || '该法令暂不可签署。');
       if (s.lawDay === s.day) return result(false, '今天已签署一条法令。');
-      s.laws.push(action.id); s.lawDay = s.day; s.hope += law.hope; s.discontent += law.discontent; updateExtremes(s);
+      if (law.cost && !canPay(s, law.cost)) return result(false, '签署该法令所需物资不足。');
+      if (law.cost) pay(s, law.cost);
+      s.laws.push(action.id); s.lawDay = s.day; s.hope += law.hope || 0; s.discontent += law.discontent || 0;
+      if (action.id === 'martialLaw' && s.social.riotDeadline !== null) s.social.riotDeadline += 24;
+      updateExtremes(s);
       note(s, `签署法令：${law.name}。`); syncSocial(s); return result(true, s.message);
     }
     case 'relief': {
