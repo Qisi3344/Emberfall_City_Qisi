@@ -281,11 +281,9 @@ test('child labor carries a recurring social cost and extra cold sickness risk',
 
   const hopeAfterLaw = s.hope;
   const discontentAfterLaw = s.discontent;
+  s.day = 15;
+  s.hour = 5;
 
-  while (s.hour !== 5 && s.mode === 'playing') {
-    if (s.event) act(s, { type: 'event', choice: 0 });
-    advanceHours(s, 1);
-  }
   advanceHours(s, 1);
 
   assert.ok(s.hope <= hopeAfterLaw, '儿童劳动应产生持续希望代价');
