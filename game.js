@@ -520,26 +520,29 @@ export function act(s, action) {
 
 function daily(s) {
   const labor = Math.min(1, workforce(s) / Math.max(1, assigned(s)));
+  const productionMult = lawProduct(s, 'productionMult');
   const workers = s.slots.filter(b => b?.type === 'hunter').reduce((n, b) => n + b.workers, 0) * labor;
-  if (s.day < 20) s.resources.food = Math.min(storageLimit(s), round(s.resources.food + workers * (s.day === 19 ? 0.7 : 1.8)));
-  const need = s.population * (s.laws.includes('soup') ? 0.24 : 0.3);
+  if (s.day < 20) s.resources.food = Math.min(storageLimit(s), round(s.resources.food + workers * (s.day === 19 ? 0.7 : 1.8) * productionMult));
+  const need = s.population * 0.3 * lawProduct(s, 'foodMult') + lawSum(s, 'dailyFood');
   const missing = Math.max(0, need - s.resources.food);
   s.resources.food = Math.max(0, round(s.resources.food - need));
+  s.resources.coal = Math.max(0, round(s.resources.coal - lawSum(s, 'dailyCoal')));
   const homes = s.slots.flatMap((b, i) => b?.type === 'house' ? [buildingHeat(s, i)] : []);
   const avgHeat = homes.length ? homes.reduce((a, b) => a + b, 0) / homes.length : -50;
   const exposed = Math.max(0, s.population - housing(s));
-  const cold = Math.max(0, Math.ceil(s.population * Math.max(0, -avgHeat - 3) / 700));
-  const childLaborSick = childLaborers(s) > 0 && avgHeat < -10 ? 1 : 0;
-  const newSick = Math.ceil(exposed * 0.12) + cold + Math.ceil(missing * 0.6) + childLaborSick;
+  const cold = Math.max(0, Math.ceil(s.population * Math.max(0, -avgHeat - 3) / 700 * lawProduct(s, 'coldSickMult')));
+  const lawColdSick = avgHeat < -20 ? lawSum(s, 'dailySickCold') : 0;
+  const newSick = Math.ceil(exposed * 0.12) + cold + Math.ceil(missing * 0.6) + lawSum(s, 'dailySick') + lawColdSick;
   const clinicWorkers = s.slots.filter(b => b?.type === 'clinic').reduce((n, b) => n + b.workers, 0);
-  const treated = Math.min(s.sick + newSick, Math.floor(clinicWorkers * 0.8));
+  const treated = Math.min(s.sick + newSick, Math.floor(clinicWorkers * 0.8 * lawProduct(s, 'clinicMult')));
   s.sick = Math.min(s.population, s.sick + newSick - treated);
   s.frostbite += cold;
   const deaths = Math.min(s.sick, Math.max(0, Math.floor((s.sick - s.population * 0.27) / 5)) + Math.floor(missing / 8));
   s.sick -= deaths; s.population -= deaths; s.dead += deaths;
   normalizeStaffing(s);
-  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0) - (s.laws.includes('childWork') ? 1 : 0);
-  s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.laws.includes('childWork') ? 1 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
+  const shelterHope = s.slots.some(b => b?.type === 'shelter') ? (s.laws.includes('apprenticeship') ? 1 : 2) : 0;
+  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + shelterHope + lawSum(s, 'dailyHope');
+  s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + lawSum(s, 'dailyDiscontent') - lawSum(s, 'longShiftRelief') + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
   updateExtremes(s);
 
@@ -591,11 +594,11 @@ export function advanceHours(s, count = 1) {
         const b = s.slots[i]; if (!b || !b.workers) continue;
         const outside = ['coal', 'saw', 'steel'].includes(b.type);
         if (outside && s.day === 20) continue;
-        const rate = b.workers / BUILDINGS[b.type].workers * labor * (s.day === 19 && outside ? 0.5 : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * (s.laws.includes('forcedWork') ? 1.1 : 1);
+        const rate = b.workers / BUILDINGS[b.type].workers * labor * (s.day === 19 && outside ? 0.5 : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * lawProduct(s, 'productionMult');
         const key = { coal: 'coal', saw: 'wood', steel: 'steel', greenhouse: 'food' }[b.type];
         const amount = { coal: 5, saw: 3, steel: 1.8, greenhouse: buildingHeat(s, i) < -25 ? 0 : 2.2 }[b.type] || 0;
         if (key) s.resources[key] = Math.min(storageLimit(s), round(s.resources[key] + amount * rate * b.level * (b.type === 'coal' && s.researched.includes('coalEfficiency') ? 1.3 : 1)));
-        if (b.type === 'workshop') s.researchPoints = round(s.researchPoints + rate * b.level);
+        if (b.type === 'workshop') s.researchPoints = round(s.researchPoints + rate * b.level * lawProduct(s, 'researchMult'));
       }
     }
     s.hour = (s.hour + 1) % 24; moved++;
