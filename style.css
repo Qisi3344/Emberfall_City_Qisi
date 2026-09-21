@@ -1166,3 +1166,32 @@
   .generator .core-icon{width:24px;height:24px}
   .generator .core-icon svg{width:23px;height:23px}
 }
+
+
+/* Heat range visualization follows researched generator range */
+.city-map.heat .ring{
+  background:transparent;
+  border-color:#566b7490;
+  box-shadow:0 0 0 3px #4d66701a,inset 0 0 0 3px #4d667014;
+  opacity:.42;
+}
+.city-map.heat.range-1 .ring.r1,
+.city-map.heat.range-2 .ring.r1,
+.city-map.heat.range-3 .ring.r1,
+.city-map.heat.range-2 .ring.r2,
+.city-map.heat.range-3 .ring.r2,
+.city-map.heat.range-3 .ring.r3{
+  border-color:#d88742c2;
+  box-shadow:
+    0 0 10px #d8874236,
+    0 0 0 3px #d8874218,
+    inset 0 0 0 3px #d8874212;
+  opacity:1;
+}
+.city-map.heat.range-1 .ring.r2,
+.city-map.heat.range-1 .ring.r3,
+.city-map.heat.range-2 .ring.r3{
+  border-color:#50616a70;
+  box-shadow:0 0 0 3px #42565e12,inset 0 0 0 3px #42565e10;
+  opacity:.28;
+}
