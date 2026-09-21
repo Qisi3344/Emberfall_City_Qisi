@@ -15,3 +15,15 @@ export function mcpClientConfig(command, serverPath) {
     toml: `[mcp_servers.ember-city]\ncommand = ${JSON.stringify(executable)}\nargs = [${JSON.stringify(path)}]`,
   };
 }
+
+export function mcpHttpConfig(value) {
+  let url;
+  try { url = new URL(String(value || '').trim()); } catch { return null; }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password || url.hash) return null;
+  const address = url.href;
+  return {
+    url: address,
+    json: JSON.stringify({ mcpServers: { 'ember-city': { url: address } } }, null, 2),
+    toml: `[mcp_servers.ember-city]\nurl = ${JSON.stringify(address)}`,
+  };
+}

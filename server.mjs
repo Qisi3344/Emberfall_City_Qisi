@@ -2,8 +2,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { probeMcpServer } from './mcp-probe.mjs';
+import { createMcpHttpHandler } from './mcp-http.mjs';
 
 const root = resolve(import.meta.dirname);
+const port = Number(process.env.PORT || 4173);
+const handleMcp = createMcpHttpHandler();
 const types = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -11,9 +14,10 @@ const types = {
 };
 createServer(async (req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  if (pathname === '/mcp') { await handleMcp(req, res); return; }
   if (req.method === 'GET' && pathname === '/api/mcp-setup') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-      .end(JSON.stringify({ transport: 'stdio', command: 'node', serverPath: join(root, 'mcp-server.mjs') }));
+      .end(JSON.stringify({ transport: ['stdio', 'streamable-http'], command: 'node', serverPath: join(root, 'mcp-server.mjs'), httpUrl: `http://127.0.0.1:${port}/mcp` }));
     return;
   }
   if (req.method === 'GET' && pathname === '/api/mcp-check') {
@@ -33,4 +37,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('Not found');
   }
-}).listen(4173, '127.0.0.1', () => console.log('http://127.0.0.1:4173'));
+}).listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}`));

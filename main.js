@@ -1,6 +1,6 @@
 import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score } from './game.js';
 import { audio } from './audio.js';
-import { mcpClientConfig } from './mcp-connect.js';
+import { mcpClientConfig, mcpHttpConfig } from './mcp-connect.js';
 
 const SAVE = 'ember-city-save-v1';
 const RANKS = 'ember-city-ranks-v1';
@@ -29,6 +29,9 @@ let settingsOpen = false;
 let mcpGuideOpen = false;
 let mcpCommand = 'node';
 let mcpServerPath = '';
+let mcpHttpUrl = '';
+let mcpDetectedHttpUrl = '';
+let mcpTransport = 'stdio';
 let mcpFormat = 'json';
 let mcpLocalAvailable = false;
 let mcpDetectedPath = '';
@@ -278,26 +281,31 @@ function overlayHtml() {
   if (state.mode === 'won' || state.mode === 'lost') return `<div class="overlay"><div class="ending"><div class="eyebrow">CITY ARCHIVE · FINAL REPORT</div><h1>${state.mode === 'won' ? '黎明仍在' : state.lossReason === 'exodus' ? '城市解体' : state.lossReason === 'riot' ? '统治终结' : state.lossReason === 'population' ? '无人守城' : '炉火熄灭'}</h1><div class="summary"><div>初始人口<b>${state.initialPopulation ?? 30}</b></div><div>剩余人口<b>${state.population}</b></div><div>死亡人数<b>${state.dead}</b></div><div>离城人数<b>${state.social.fled}</b></div><div>冻伤人数<b>${state.frostbite}</b></div><div>最低温度<b>${weather(state.day)}℃</b></div><div>最低希望<b>${state.lowestHope}</b></div><div>最高不满<b>${state.highestDiscontent}</b></div><div>最终煤炭<b>${fmt(state.resources.coal)}</b></div><div>最终得分<b>${score(state)}</b></div></div><p class="chronicle">${state.social.massExodus ? '发生大规模离城。' : ''}${state.social.riotEver ? '曾触发暴乱最后通牒。' : ''}执政者：${esc(state.playerName)}（${state.social.rulerStatus}）。这座城市签署了 ${state.laws.length} 条法令，建起 ${state.slots.filter(Boolean).length} 座建筑。${state.mode === 'won' ? '风暴散去，仍有人守着发电机。' : `城市在第 ${state.day} 天止步。`}</p><button class="action secondary" data-act="ranking">查看排名</button><button class="action" data-act="restart">再来一局</button></div></div>`;
   return '';
 }
-function mcpCanCheck() { return mcpLocalAvailable && mcpServerPath.trim() === mcpDetectedPath; }
+function mcpConfig() { return mcpTransport === 'http' ? mcpHttpConfig(mcpHttpUrl) : mcpClientConfig(mcpCommand, mcpServerPath); }
+function mcpCanCheck() { return mcpLocalAvailable && (mcpTransport === 'http' ? mcpHttpUrl.trim() === mcpDetectedHttpUrl : mcpServerPath.trim() === mcpDetectedPath); }
 function mcpStatusText() {
-  if (!mcpClientConfig(mcpCommand, mcpServerPath)) return '请填写 Node 启动命令和 mcp-server.mjs 的本机绝对路径。';
+  if (!mcpConfig()) return mcpTransport === 'http' ? '请填写以 http:// 或 https:// 开头的 MCP 服务 URL。' : '请填写 Node 启动命令和 mcp-server.mjs 的本机绝对路径。';
   if (mcpCanCheck()) return mcpCheckStatus || '已识别本地项目路径。可检测服务是否正常启动。';
-  return '配置已生成；请在 AI 客户端中确认工具列表。';
+  return '配置已生成；请在 AI 客户端中确认工具列表。远程 URL 需由服务器提供并做好访问控制。';
 }
 function mcpGuideHtml() {
-  const config = mcpClientConfig(mcpCommand, mcpServerPath);
-  const preview = config ? config[mcpFormat] : '填写本机 mcp-server.mjs 的绝对路径后生成配置。';
+  const config = mcpConfig();
+  const preview = config ? config[mcpFormat] : (mcpTransport === 'http' ? '填写 MCP 服务 URL 后生成配置。' : '填写本机 mcp-server.mjs 的绝对路径后生成配置。');
   return `<div class="overlay settings"><section class="report settings-panel mcp-panel" aria-label="MCP 接入指南">
-    <div class="eyebrow">AI CONNECTION / STDIO</div><h2>连接 AI 客户端</h2>
-    <p class="mcp-intro">任何支持本地 STDIO MCP 服务器的 AI 客户端都能启动余烬城的工具服务。本地运行会自动填路径；在线网页需下载源码后手动填写。</p>
-    <ol class="mcp-steps"><li>在电脑上下载<a href="https://github.com/Qisi3344/Emberfall_City_Qisi/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">项目源码</a>并安装 <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>；解压后保留整个项目文件夹。</li><li>确认下方启动命令和 <code>mcp-server.mjs</code> 的本机绝对路径。</li><li>在 AI 客户端的 MCP 设置中新增 <b>STDIO</b> 服务器，名称填 <code>ember-city</code>。可使用下方 JSON / TOML 示例，或分别填写命令与参数。</li><li>保存并重启或刷新客户端；看到 <code>get_game_state</code>、<code>create_ruler</code> 等工具后，让 AI 创建执政者开始新局。</li></ol>
+    <div class="eyebrow">AI CONNECTION / MCP</div><h2>连接 AI 客户端</h2>
+    <p class="mcp-intro">余烬城提供标准 MCP 工具。按 AI 客户端支持的接入方式选择；无需绑定特定 AI 或账号。</p>
+    <div class="mcp-tabs mcp-transport" role="group" aria-label="MCP 连接方式"><button class="${mcpTransport === 'stdio' ? 'active' : ''}" data-act="mcp-stdio" aria-pressed="${mcpTransport === 'stdio'}">本地 STDIO</button><button class="${mcpTransport === 'http' ? 'active' : ''}" data-act="mcp-http" aria-pressed="${mcpTransport === 'http'}">URL / HTTP</button></div>
+    ${mcpTransport === 'stdio' ? `
+    <ol class="mcp-steps"><li>下载<a href="https://github.com/Qisi3344/Emberfall_City_Qisi/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">项目源码</a>并安装 <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>。</li><li>确认下方 <code>mcp-server.mjs</code> 的本机绝对路径。</li><li>在任意支持 STDIO 的 AI 客户端新增 MCP 服务器：命令为 <code>node</code>，参数为脚本路径。</li><li>保存并刷新客户端，找到 <code>get_game_state</code> 和 <code>create_ruler</code> 工具。</li></ol>
     <label class="mcp-field">启动命令<input data-mcp-field="command" value="${esc(mcpCommand)}" spellcheck="false" autocomplete="off" aria-label="MCP 启动命令"></label>
-    <label class="mcp-field">参数 · 本机脚本绝对路径<input data-mcp-field="path" value="${esc(mcpServerPath)}" placeholder="例如 C:\\Games\\Emberfall_City_Qisi\\mcp-server.mjs" spellcheck="false" autocomplete="off" aria-label="MCP 服务器脚本绝对路径"></label>
+    <label class="mcp-field">参数 · 本机脚本绝对路径<input data-mcp-field="path" value="${esc(mcpServerPath)}" placeholder="例如 C:\\Games\\Emberfall_City_Qisi\\mcp-server.mjs" spellcheck="false" autocomplete="off" aria-label="MCP 服务器脚本绝对路径"></label>` : `
+    <ol class="mcp-steps"><li>下载<a href="https://github.com/Qisi3344/Emberfall_City_Qisi/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">项目源码</a>并安装 <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>。</li><li>在项目目录运行 <code>npm run dev</code>，保持终端开启。默认 MCP 地址为 <code>http://127.0.0.1:4173/mcp</code>。</li><li>在支持 Streamable HTTP 的 AI 客户端新增 MCP 服务器，粘贴下方 URL。只接受公网地址的云端 AI 需要先部署带认证的 HTTPS 服务；本机地址无法被云端访问。</li><li>连接后确认能看到 <code>get_game_state</code> 和 <code>create_ruler</code> 工具。</li></ol>
+    <label class="mcp-field">MCP 服务 URL<input data-mcp-field="url" value="${esc(mcpHttpUrl)}" placeholder="http://127.0.0.1:4173/mcp" spellcheck="false" autocomplete="off" aria-label="MCP 服务 URL"></label>`}
     <p class="mcp-status" role="status">${esc(mcpStatusText())} ${esc(mcpFeedback)}</p>
     ${mcpLocalAvailable ? `<button class="action secondary" data-act="mcp-check" ${mcpCanCheck() ? '' : 'disabled'}>检测此项目 MCP 服务</button>` : ''}
     <div class="mcp-config-head"><span>复制到客户端</span><div class="mcp-tabs" role="group" aria-label="配置格式"><button class="${mcpFormat === 'json' ? 'active' : ''}" data-act="mcp-json" aria-pressed="${mcpFormat === 'json'}">JSON</button><button class="${mcpFormat === 'toml' ? 'active' : ''}" data-act="mcp-toml" aria-pressed="${mcpFormat === 'toml'}">TOML</button></div></div>
     <pre class="mcp-config" data-mcp-preview>${esc(preview)}</pre><button class="action secondary" data-act="mcp-copy" ${config ? '' : 'disabled'}>复制${mcpFormat.toUpperCase()}配置</button>
-    <p class="mcp-note">MCP 客户端会自行启动服务，无需另开终端运行。AI 对局与当前网页存档独立，共用同一套游戏规则。</p>
+    <p class="mcp-note">${mcpTransport === 'stdio' ? '客户端会自行启动 MCP 服务。' : 'HTTP 服务默认仅监听本机；GitHub Pages 静态页面不提供 /mcp 服务。'}每个 AI 对局与当前网页存档独立，共用同一套游戏规则。</p>
     <button class="action secondary" data-act="mcp-back">返回设置</button>
   </section></div>`;
 }
@@ -309,9 +317,23 @@ async function loadMcpSetup() {
     if (!setup.serverPath || !mcpGuideOpen) return;
     mcpLocalAvailable = true;
     mcpDetectedPath = setup.serverPath;
+    mcpDetectedHttpUrl = setup.httpUrl || '';
     if (!mcpServerPath) mcpServerPath = setup.serverPath;
+    if (!mcpHttpUrl) mcpHttpUrl = mcpDetectedHttpUrl;
     render();
   } catch { /* GitHub Pages has no local setup endpoint. */ }
+}
+async function probeMcpHttp(url) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+  const init = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'ember-city-guide', version: '1.0' } } }) });
+  const session = init.headers.get('mcp-session-id');
+  if (!init.ok || !session) return { ok: false, message: `HTTP 初始化失败 (${init.status})` };
+  try {
+    const response = await fetch(url, { method: 'POST', headers: { ...headers, 'Mcp-Session-Id': session, 'Mcp-Protocol-Version': '2025-11-25' }, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) });
+    const result = await response.json();
+    const tools = result.result?.tools || [];
+    return { ok: response.ok, toolCount: tools.length, hasGameTools: tools.some(tool => tool.name === 'create_ruler') && tools.some(tool => tool.name === 'get_game_state') };
+  } finally { fetch(url, { method: 'DELETE', headers: { 'Mcp-Session-Id': session } }).catch(() => {}); }
 }
 function settingsHtml() {
   if (!settingsOpen) return '';
@@ -369,9 +391,10 @@ app.addEventListener('click', event => {
   if (action === 'settings-close') { settingsOpen = false; mcpGuideOpen = false; restartConfirm = false; render(); return; }
   if (action === 'settings-mcp') { mcpGuideOpen = true; mcpFeedback = ''; render(); loadMcpSetup(); return; }
   if (action === 'mcp-back') { mcpGuideOpen = false; render(); return; }
+  if (action === 'mcp-stdio' || action === 'mcp-http') { mcpTransport = action === 'mcp-http' ? 'http' : 'stdio'; mcpCheckStatus = ''; mcpFeedback = ''; render(); return; }
   if (action === 'mcp-json' || action === 'mcp-toml') { mcpFormat = action === 'mcp-json' ? 'json' : 'toml'; mcpFeedback = ''; render(); return; }
   if (action === 'mcp-copy') {
-    const config = mcpClientConfig(mcpCommand, mcpServerPath);
+    const config = mcpConfig();
     if (!config) return;
     navigator.clipboard.writeText(config[mcpFormat]).then(() => { mcpFeedback = '配置已复制。'; if (mcpGuideOpen) render(); })
       .catch(() => { mcpFeedback = '复制失败，请手动选中配置。'; if (mcpGuideOpen) render(); });
@@ -379,8 +402,9 @@ app.addEventListener('click', event => {
   }
   if (action === 'mcp-check') {
     if (!mcpCanCheck()) return;
-    mcpCheckStatus = '正在启动并检查 MCP 服务…'; mcpFeedback = ''; render();
-    fetch('./api/mcp-check', { cache: 'no-store' }).then(response => response.json()).then(result => {
+    mcpCheckStatus = '正在检查 MCP 服务…'; mcpFeedback = ''; render();
+    const check = mcpTransport === 'http' ? probeMcpHttp(mcpHttpUrl) : fetch('./api/mcp-check', { cache: 'no-store' }).then(response => response.json());
+    check.then(result => {
       mcpCheckStatus = result.ok && result.hasGameTools ? `服务可启动 · 已发现 ${result.toolCount} 个工具。` : `检测失败：${result.message || '游戏工具未就绪。'}`;
       if (mcpGuideOpen) render();
     }).catch(() => { mcpCheckStatus = '检测失败：本地游戏服务不可用。'; if (mcpGuideOpen) render(); });
@@ -418,10 +442,11 @@ app.addEventListener('input', event => {
   if (field) {
     if (field === 'command') mcpCommand = event.target.value;
     if (field === 'path') mcpServerPath = event.target.value;
+    if (field === 'url') mcpHttpUrl = event.target.value;
     mcpFeedback = ''; mcpCheckStatus = '';
-    const config = mcpClientConfig(mcpCommand, mcpServerPath);
+    const config = mcpConfig();
     const preview = app.querySelector('[data-mcp-preview]');
-    if (preview) preview.textContent = config ? config[mcpFormat] : '填写本机 mcp-server.mjs 的绝对路径后生成配置。';
+    if (preview) preview.textContent = config ? config[mcpFormat] : (mcpTransport === 'http' ? '填写 MCP 服务 URL 后生成配置。' : '填写本机 mcp-server.mjs 的绝对路径后生成配置。');
     const copy = app.querySelector('[data-act="mcp-copy"]');
     if (copy) copy.disabled = !config;
     const status = app.querySelector('.mcp-status');

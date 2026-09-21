@@ -47,10 +47,14 @@ https://qisi3344.github.io/Emberfall_City_Qisi/
 
 ## MCP 游戏接口（`mcp-server.mjs`）
 
-任何支持本地 **STDIO MCP** 的 AI 客户端都可以连接。MCP 对局与浏览器当前对局分别运行，但**共用同一套规则引擎**（`game.js` 的 `act` / `advanceHours`）。所有校验都在引擎内部完成，Agent 无法直接改数值或绕过资源消耗。排行榜记录与真人同格式、不区分人与 AI。
+支持两种标准 MCP 连接方式：本地 **STDIO** 与 **Streamable HTTP**。任何支持其中一种方式的 AI 客户端都能使用游戏工具，无需绑定 Codex 或特定账号。每个 MCP 客户端会话与浏览器当前对局分别运行，但**共用同一套规则引擎**（`game.js` 的 `act` / `advanceHours`）。所有校验都在引擎内部完成，Agent 无法直接改数值或绕过资源消耗。排行榜记录与真人同格式、不区分人与 AI。
+
+在游戏设置中打开“AI / MCP 接入指南”，切换到客户端支持的连接方式。JSON、TOML 只是常见配置示例；若客户端提供表单，可分别填写下述命令与参数或 URL。
+
+### 本地 STDIO
 
 1. 在运行 AI 客户端的电脑上安装 Node.js，并下载或克隆完整项目。
-2. 在游戏设置中打开“AI / MCP 接入指南”。用 `npm run dev` 运行本地游戏时，页面会自动填入 `mcp-server.mjs` 的绝对路径，还可以点击“检测本地 MCP 服务”验证握手和工具列表。在线静态页面无法读取本机文件路径，需要手动填写。
+2. 用 `npm run dev` 运行本地游戏时，设置页会自动填入 `mcp-server.mjs` 的绝对路径，还可以点击“检测此项目 MCP 服务”验证握手和工具列表。在线静态页面无法读取本机文件路径，需要手动填写。
 3. 在 AI 客户端新增 STDIO MCP 服务器，名称 `ember-city`，启动命令 `node`，参数为本机 `mcp-server.mjs` 的**绝对路径**。设置页可复制 JSON 或 TOML 示例；其他客户端可直接填写相同的命令与参数。
 4. 保存并重启或刷新 AI 客户端。看到 `get_game_state`、`create_ruler` 等工具后，让 AI 创建执政者开始一局。客户端会自行启动 MCP 进程，不需要预先运行 `npm run mcp`。
 
@@ -76,6 +80,24 @@ args = ["<本机项目绝对路径>/mcp-server.mjs"]
 ```
 
 调试时可以手动运行 `npm run mcp`，服务通过标准输入 / 输出交换 MCP JSON-RPC 消息；标准输出不包含普通日志。
+
+### Streamable HTTP URL
+
+1. 在运行 AI 客户端的电脑上安装 Node.js，并下载或克隆完整项目。
+2. 在项目目录运行 `npm run dev`，保持终端开启。MCP 地址为 `http://127.0.0.1:4173/mcp`；设置页的“URL / HTTP”选项可复制地址并检测握手与工具列表。
+3. 在支持 Streamable HTTP 的 AI 客户端新增 MCP 服务器，填写这个 URL。常见 JSON 配置为：
+
+```json
+{
+  "mcpServers": {
+    "ember-city": {
+      "url": "http://127.0.0.1:4173/mcp"
+    }
+  }
+}
+```
+
+仅在同一台电脑运行的 AI 客户端能访问这个本机地址。需要连接云端 AI 时，必须另行部署有认证和 HTTPS 的 MCP 后端，再把公开 URL 填进客户端；GitHub Pages 是静态页面，不能承载 `/mcp` 服务。当前 `npm run dev` 默认只监听 `127.0.0.1`，不要直接把未加认证的开发服务暴露到公网。
 
 工具：`get_game_state`、`create_ruler`、`build`、`upgrade_building`、`demolish_building`、`assign_workers`、`research`、`sign_law`、`choose_event_option`、`toggle_generator`、`toggle_overdrive`、`issue_relief`、`make_concession`、`advance_time`、`get_result`。终局首次 `get_result` 会把战绩写入 `output/agent-ranks.json`（与浏览器战绩同一 schema，无人机标识字段）。
 
