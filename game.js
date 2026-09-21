@@ -22,13 +22,40 @@ export const RESEARCH = {
   coalEfficiency: { name: '采煤改良', points: 20, cost: { wood: 18, steel: 10 }, note: '煤矿产量提高 30%' },
 };
 
+export const LAW_BRANCHES = {
+  survival: { name: '生存配给', note: '食物、医疗与储备' },
+  labor: { name: '劳动生产', note: '工时、效率与动员' },
+  children: { name: '儿童与照护', note: '庇护或童工路线' },
+  society: { name: '社会秩序', note: '娱乐、议事与强硬手段' },
+};
+
 export const LAWS = {
-  soup: { name: '节粮汤', note: '食物消耗减少 20%，每日增加不满', hope: -2, discontent: 4 },
-  longShift: { name: '延长工时', note: '工作时间增加至 06:00—20:00，日增不满', hope: -3, discontent: 6 },
-  shelter: { name: '儿童庇护', note: '解锁儿童庇护所，提升希望', hope: 7, discontent: 0, excludes: 'childWork' },
-  childWork: { name: '儿童劳动', note: '最多让 3 名儿童加入劳动力；每日希望 −1、不满 +1，严寒时儿童更易生病', hope: -10, discontent: 5, excludes: 'shelter' },
-  venue: { name: '公共娱乐', note: '解锁夜间会所', hope: 0, discontent: -3 },
-  forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，立即并持续增加不满', hope: -14, discontent: 12 },
+  soup: { name: '节粮汤', branch: 'survival', tier: 0, lane: 'center', day: 1, note: '食物消耗 −20%；每日不满 +1', hope: -2, discontent: 4, foodMult: 0.8, dailyDiscontent: 1 },
+  strictRations: { name: '严格配给', branch: 'survival', tier: 1, lane: 'left', day: 4, requires: 'soup', conditionText: '食物低于约 1.5 日需求', note: '进一步节省 15% 食物；每日希望 −2、不满 +2', hope: -2, discontent: 2, foodMult: 0.85, dailyHope: -2, dailyDiscontent: 2 },
+  careRations: { name: '病弱优先', branch: 'survival', tier: 1, lane: 'right', day: 4, requires: 'soup', conditionText: '病患达到人口 10%', note: '医务所效率 +25%；每日额外消耗约 10% 食物', hope: 2, discontent: 1, clinicMult: 1.25, foodMult: 1.1 },
+  finalRations: { name: '最终配给令', branch: 'survival', tier: 2, lane: 'left', day: 15, requires: 'strictRations', conditionText: '食物低于约 2 日需求', note: '再降低 25% 食物消耗；每日不满 +1', hope: -6, discontent: 8, foodMult: 0.75, dailyDiscontent: 1 },
+  strategicReserve: { name: '战略储备', branch: 'survival', tier: 2, lane: 'right', day: 13, requires: 'careRations', note: '仓储上限 +200', hope: 2, discontent: 0, cost: { wood: 20, steel: 8 }, storageBonus: 200 },
+
+  longShift: { name: '延长工时', branch: 'labor', tier: 0, lane: 'center', day: 1, note: '工作时间 06:00—20:00；每日不满 +2', hope: -3, discontent: 6, longShift: true, dailyDiscontent: 2 },
+  shiftSystem: { name: '轮班制度', branch: 'labor', tier: 1, lane: 'left', day: 5, requires: 'longShift', note: '延长工时的不满压力减轻；生产效率 −5%', hope: 2, discontent: -2, productionMult: 0.95, longShiftRelief: 1 },
+  productionQuota: { name: '生产定额', branch: 'labor', tier: 1, lane: 'right', day: 5, requires: 'longShift', conditionText: '煤 / 木 / 钢任一低于 20', note: '生产效率 +15%；每日不满 +2，严寒工作增加病患风险', hope: -3, discontent: 5, productionMult: 1.15, dailyDiscontent: 2, dailySickCold: 1 },
+  mobilization: { name: '全城动员', branch: 'labor', tier: 2, lane: 'left', day: 15, requires: 'shiftSystem', conditionText: '希望至少 25', note: '生产效率 +15%；每日不满 +2，医疗效率 −20%', hope: -4, discontent: 5, productionMult: 1.15, clinicMult: 0.8, dailyDiscontent: 2 },
+  forcedWork: { name: '强制劳动', branch: 'labor', tier: 2, lane: 'right', day: 10, requires: 'productionQuota', note: '生产效率 +10%；希望大降，持续增加不满', hope: -14, discontent: 12, productionMult: 1.1, dailyHope: -1, dailyDiscontent: 2 },
+  jobConscription: { name: '岗位征调', branch: 'labor', tier: 3, lane: 'right', day: 13, requires: 'forcedWork', note: '生产效率再 +8%；每日希望 −2，严寒时病患风险增加', hope: -8, discontent: 8, productionMult: 1.08, dailyHope: -2, dailySickCold: 1 },
+
+  shelter: { name: '儿童庇护', branch: 'children', tier: 0, lane: 'left', day: 2, note: '解锁儿童庇护所；庇护所每日提升希望', hope: 7, discontent: 0, excludes: 'childWork' },
+  childWork: { name: '儿童劳动', branch: 'children', tier: 0, lane: 'right', day: 2, note: '最多 3 名儿童加入劳动力；持续损害希望并增加不满', hope: -10, discontent: 5, excludes: 'shelter', childCap: 3, dailyHope: -1, dailyDiscontent: 1, dailySickCold: 1 },
+  apprenticeship: { name: '学徒制度', branch: 'children', tier: 1, lane: 'left', day: 6, requires: 'shelter', note: '工坊研究 +10%，医务所效率 +10%；庇护所希望收益略降', hope: 2, discontent: 0, researchMult: 1.1, clinicMult: 1.1, shelterHope: 1 },
+  hazardChild: { name: '危险岗位童工', branch: 'children', tier: 1, lane: 'right', day: 6, requires: 'childWork', conditionText: '可用工人不超过 3', note: '儿童劳动力上限提高到 5；每日希望 / 不满压力进一步恶化', hope: -8, discontent: 8, childCap: 5, dailyHope: -1, dailyDiscontent: 1, dailySickCold: 1 },
+  protectEveryone: { name: '守住每个人', branch: 'children', tier: 2, lane: 'left', day: 15, requires: 'apprenticeship', conditionText: '病患达到人口 15%', note: '医疗效率 +25%，寒冷致病 −25%；生产效率 −10%，煤耗 +5%', hope: 5, discontent: -2, clinicMult: 1.25, coldSickMult: 0.75, productionMult: 0.9, coalMult: 1.05 },
+  youthCrews: { name: '少年作业队', branch: 'children', tier: 2, lane: 'right', day: 10, requires: 'hazardChild', note: '生产效率 +8%；每天额外增加病患风险', hope: -10, discontent: 8, productionMult: 1.08, dailySick: 1 },
+
+  venue: { name: '公共娱乐', branch: 'society', tier: 0, lane: 'center', day: 8, note: '解锁夜间会所；签署时降低不满', hope: 0, discontent: -3 },
+  publicAssembly: { name: '公共集会', branch: 'society', tier: 1, lane: 'left', day: 9, requires: 'venue', note: '每日希望 +1、不满 −1；每日额外消耗 4 食物', hope: 2, discontent: -2, dailyHope: 1, dailyDiscontent: -1, dailyFood: 4 },
+  nightWatch: { name: '巡夜队', branch: 'society', tier: 1, lane: 'right', day: 11, requires: 'venue', conditionText: '不满至少 60', note: '抗议与暴乱警告阈值提高；每日食物 −3、煤炭 −3', hope: -2, discontent: -3, dailyFood: 3, dailyCoal: 3, protestThreshold: 85, warningThreshold: 97 },
+  openCouncil: { name: '公开议事', branch: 'society', tier: 2, lane: 'left', day: 11, requires: 'publicAssembly', conditionText: '希望 ≥35 且不满 35—70', note: '每日不满 −1；生产效率 −5%', hope: 4, discontent: -4, dailyDiscontent: -1, productionMult: 0.95, excludes: 'martialLaw' },
+  martialLaw: { name: '紧急戒严', branch: 'society', tier: 2, lane: 'right', day: 11, requires: 'nightWatch', conditionText: '不满 ≥90', note: '立即压低不满；若已有暴乱最后通牒，额外争取 24 小时', hope: -12, discontent: -8, dailyDiscontent: 2, excludes: 'openCouncil' },
+  universalRelief: { name: '全民救济', branch: 'society', tier: 3, lane: 'left', day: 13, requires: 'openCouncil', conditionText: '希望 ≤15', note: '大幅恢复希望，但消耗大量储备', hope: 12, discontent: -4, cost: { food: 20, wood: 15 } },
 };
 
 export const EVENTS = {
