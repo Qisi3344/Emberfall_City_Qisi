@@ -32,8 +32,8 @@ export const LAWS = {
 };
 
 export const EVENTS = {
-  3: { title: '第一场寒潮', text: '医疗队请求优先获得燃料。仓库主管提醒你，煤炭储备并不宽裕。', choices: [
-    { label: '给医务所供暖', consequence: '煤炭 −15，病患 −3', effect: { coal: -15, sick: -3 } },
+  3: { title: '第一场寒潮', text: '寒潮突然压低了城内温度。照看病患的人请求多分一些燃料，仓库主管却提醒你，煤炭储备并不宽裕。', choices: [
+    { label: '优先照顾病患', consequence: '煤炭 −15，病患 −3', effect: { coal: -15, sick: -3 } },
     { label: '保留燃料', consequence: '不满 +6', effect: { discontent: 6 } },
   ] },
   6: { title: '城门外的脚步', text: '一队幸存者抵达城门。收留他们会增加劳动力，也需要更多食物和住处。', choices: [
