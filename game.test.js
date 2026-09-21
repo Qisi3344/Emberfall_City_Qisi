@@ -290,3 +290,18 @@ test('child labor carries a recurring social cost and extra cold sickness risk',
   assert.ok(s.discontent >= discontentAfterLaw, '儿童劳动应产生持续不满代价');
   assert.ok(s.sick >= 1, '严寒环境下儿童劳动应增加病患风险');
 });
+
+
+test('paused player actions queue social events without popping them until time advances', () => {
+  const s = newGame();
+  start(s);
+  s.speed = 0;
+  s.discontent = 79;
+
+  assert.equal(act(s, { type: 'law', id: 'longShift' }).ok, true);
+  assert.equal(s.event, null, '暂停状态下签署法令不应立即弹出事件');
+  assert.ok(s.eventQueue.includes('protest'), '事件应进入队列等待时间继续');
+
+  advanceHours(s, 1);
+  assert.equal(s.event, 'protest', '手动或自动推进时间后再显示排队事件');
+});
