@@ -599,6 +599,9 @@
 }
 .event-report{
   max-width:372px;
+  max-height:calc(100dvh - 44px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
   padding:20px 18px 17px;
   border-color:#5a676c;
   background:
@@ -667,6 +670,14 @@
   line-height:1.15;
   letter-spacing:.04em;
   color:#e4e9e9;
+}
+.event-image{
+  display:block;
+  width:min(100%,300px);
+  height:auto;
+  max-height:min(169px,24dvh);
+  object-fit:contain;
+  margin:0 auto 12px;
 }
 .event-text{
   margin:0!important;

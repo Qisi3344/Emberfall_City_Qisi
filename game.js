@@ -32,78 +32,78 @@ export const LAWS = {
 };
 
 export const EVENTS = {
-  6: { title: '城门外的脚步', text: '一队幸存者抵达城门。收留他们会增加劳动力，也需要更多食物和住处。', choices: [
+  6: { title: '城门外的脚步', image: 'survivors', text: '一队幸存者抵达城门。收留他们会增加劳动力，也需要更多食物和住处。', choices: [
     { label: '打开城门', consequence: '人口 +8，食物 −12，希望 +5', effect: { population: 8, food: -12, hope: 5 } },
     { label: '只能祝他们好运', consequence: '希望 −8', effect: { hope: -8 } },
   ] },
-  10: { title: '加班事故', text: '工人从高处摔落。城市要求你决定是否停工检修。', choices: [
+  10: { title: '加班事故', image: 'accident', text: '工人从高处摔落。城市要求你决定是否停工检修。', choices: [
     { label: '停工救治', consequence: '木材 −15，病患 −3，希望 +4', effect: { wood: -15, sick: -3, hope: 4 } },
     { label: '维持生产', consequence: '病患 +3，不满 +6', effect: { sick: 3, discontent: 6 } },
   ] },
-  14: { title: '漫长的夜', text: '连续低温让居民疲惫。有人提议举行一次集体晚餐。', choices: [
+  14: { title: '漫长的夜', image: 'dinner', text: '连续低温让居民疲惫。有人提议举行一次集体晚餐。', choices: [
     { label: '拨出食物', consequence: '食物 −20，希望 +9，不满 −5', effect: { food: -20, hope: 9, discontent: -5 } },
     { label: '保存口粮', consequence: '希望 −4', effect: { hope: -4 } },
   ] },
-  17: { title: '超级风暴确认', text: '观测员确认三天后将出现前所未有的暴风雪。所有人都望向发电机。', choices: [
+  17: { title: '超级风暴确认', image: 'storm-warning', text: '观测员确认三天后将出现前所未有的暴风雪。所有人都望向发电机。', choices: [
     { label: '公布完整预报', consequence: '希望 −5，储备意识提升', effect: { hope: -5 } },
     { label: '先稳定人心', consequence: '不满 +5', effect: { discontent: 5 } },
   ] },
-  19: { title: '最后的狩猎', text: '动物踪迹消失，城外能见度极低。猎人请求提前回城。', choices: [
+  19: { title: '最后的狩猎', image: 'last-hunt', text: '动物踪迹消失，城外能见度极低。猎人请求提前回城。', choices: [
     { label: '准许归城', consequence: '希望 +3', effect: { hope: 3 } },
     { label: '再试最后一次', consequence: '食物 +12，病患 +4', effect: { food: 12, sick: 4 } },
   ] },
-  20: { title: '风暴降临', text: '外部生产全部停止。煤炭消耗加倍。请撑过接下来的二十四小时。', choices: [
+  20: { title: '风暴降临', image: 'final-storm', text: '外部生产全部停止。煤炭消耗加倍。请撑过接下来的二十四小时。', choices: [
     { label: '守住炉火', consequence: '进入最终倒计时', effect: {} },
   ] },
-  foodProblem: { title: '口粮见底', text: '配给队报告，库存已经不足以覆盖所有人的一天口粮。饥饿还没有演变成骚乱，但抱怨正在增加。', choices: [
+  foodProblem: { title: '口粮见底', image: 'hunger', text: '配给队报告，库存已经不足以覆盖所有人的一天口粮。饥饿还没有演变成骚乱，但抱怨正在增加。', choices: [
     { label: '优先保证基本配给', consequence: '希望 +2，不满 −1', effect: { hope: 2, discontent: -1 } },
     { label: '维持现有配给', consequence: '不满 +4', effect: { discontent: 4 } },
   ] },
-  foodRiot: { title: '饥饿正在变成愤怒', text: '连续缺粮让人群聚到仓库前。现在他们要的不是解释，而是食物。', choices: [
+  foodRiot: { title: '饥饿正在变成愤怒', image: 'hunger', text: '连续缺粮让人群聚到仓库前。现在他们要的不是解释，而是食物。', choices: [
     { label: '公开配给账目并优先供餐', consequence: '希望 +2，不满 −5', effect: { hope: 2, discontent: -5 } },
     { label: '驱散人群', consequence: '希望 −4，不满 +7', effect: { hope: -4, discontent: 7 } },
   ] },
-  healthcareProblem: { title: '病患无人安置', text: '病患人数持续增加，而城里还没有可用的医务所。临时照料已经快撑不住了。', choices: [
+  healthcareProblem: { title: '病患无人安置', image: 'medical', text: '病患人数持续增加，而城里还没有可用的医务所。临时照料已经快撑不住了。', choices: [
     { label: '调整资源，优先筹建医疗', consequence: '希望 +2', effect: { hope: 2 } },
     { label: '先维持现状', consequence: '不满 +4', effect: { discontent: 4 } },
   ] },
-  healthcareOverload: { title: '医疗能力不足', text: '医务所已经存在，但病患仍在增加。床位与值守人员都开始吃紧。', choices: [
+  healthcareOverload: { title: '医疗能力不足', image: 'medical', text: '医务所已经存在，但病患仍在增加。床位与值守人员都开始吃紧。', choices: [
     { label: '优先医疗调度', consequence: '病患 −1，希望 +1', effect: { sick: -1, hope: 1 } },
     { label: '让医疗系统自行周转', consequence: '不满 +4', effect: { discontent: 4 } },
   ] },
-  healthcareProtest: { title: '病患家属的抗议', text: '医疗问题迟迟没有缓解。病患家属聚在炉边，要求城市立刻增加治疗能力。', choices: [
+  healthcareProtest: { title: '病患家属的抗议', image: 'medical', text: '医疗问题迟迟没有缓解。病患家属聚在炉边，要求城市立刻增加治疗能力。', choices: [
     { label: '重新调整岗位与供暖', consequence: '不满 −4', effect: { discontent: -4 } },
     { label: '拒绝改变当前安排', consequence: '希望 −4，不满 +6', effect: { hope: -4, discontent: 6 } },
   ] },
-  housingProblem: { title: '有人没有住处', text: '夜里仍有人睡在公共区域。住房容量已经低于当前人口，寒风开始钻进临时铺位。', choices: [
+  housingProblem: { title: '有人没有住处', image: 'cold', text: '夜里仍有人睡在公共区域。住房容量已经低于当前人口，寒风开始钻进临时铺位。', choices: [
     { label: '优先安排临时床位', consequence: '希望 +1，不满 −2', effect: { hope: 1, discontent: -2 } },
     { label: '暂时忍耐', consequence: '希望 −2，不满 +3', effect: { hope: -2, discontent: 3 } },
   ] },
-  coldHomes: { title: '住宅正在失温', text: '越来越多住宅降到危险温度。问题不是某一座建筑，而是整片居住区正在变冷。', choices: [
+  coldHomes: { title: '住宅正在失温', image: 'cold', text: '越来越多住宅降到危险温度。问题不是某一座建筑，而是整片居住区正在变冷。', choices: [
     { label: '优先保证居民区供暖', consequence: '希望 +2', effect: { hope: 2 } },
     { label: '生产优先', consequence: '不满 +4', effect: { discontent: 4 } },
   ] },
-  coldHomesProtest: { title: '他们受够了寒冷', text: '住宅持续失温，居民开始公开质问供暖安排。寒冷已经从生存问题变成了社会问题。', choices: [
+  coldHomesProtest: { title: '他们受够了寒冷', image: 'cold', text: '住宅持续失温，居民开始公开质问供暖安排。寒冷已经从生存问题变成了社会问题。', choices: [
     { label: '重新调整供暖优先级', consequence: '不满 −4', effect: { discontent: -4 } },
     { label: '拒绝调整', consequence: '希望 −4，不满 +6', effect: { hope: -4, discontent: 6 } },
   ] },
-  leavingTalk: { title: '有人开始谈论离开', text: '昨夜，外墙边留下了一句话：“这里不会有春天。”越来越多人开始收拾行李。', choices: [
+  leavingTalk: { title: '有人开始谈论离开', image: 'leaving-talk', text: '昨夜，外墙边留下了一句话：“这里不会有春天。”越来越多人开始收拾行李。', choices: [
     { label: '开放议事与配给', consequence: '食物 −8，希望 +5', effect: { food: -8, hope: 5 } },
     { label: '让传言自行消散', consequence: '希望 −2', effect: { hope: -2 } },
   ] },
-  protest: { title: '城中的抗议', text: '居民聚集在炉火旁，要求你解释饥寒与加班。', choices: [
+  protest: { title: '城中的抗议', image: 'riot', text: '居民聚集在炉火旁，要求你解释饥寒与加班。', choices: [
     { label: '听取诉求并开放口粮', consequence: '食物 −12，不满 −6', effect: { food: -12, discontent: -6 } },
     { label: '要求他们返回岗位', consequence: '不满 +4', effect: { discontent: 4 } },
   ] },
-  despair: { title: '他们准备离开这里', text: '人们不再相信这座城市能撑过下一个夜晚。城门前聚集着带着行囊的家庭。你还有一天挽回他们。', choices: [
+  despair: { title: '他们准备离开这里', image: 'exodus', text: '人们不再相信这座城市能撑过下一个夜晚。城门前聚集着带着行囊的家庭。你还有一天挽回他们。', choices: [
     { label: '动用最后储备作出承诺', consequence: '煤 −10、木 −20、食 −20；希望 +15', effect: { coal: -10, wood: -20, food: -20, hope: 15 } },
     { label: '公开事实，请求再给一天', consequence: '希望 +6，不满 +8', effect: { hope: 6, discontent: 8 } },
   ] },
-  riotUltimatum: { title: '城市拒绝继续服从', text: '人群堵住了通往发电机的道路。他们给你两天：必须将不满降至 75 以下。', choices: [
+  riotUltimatum: { title: '城市拒绝继续服从', image: 'riot', text: '人群堵住了通往发电机的道路。他们给你两天：必须将不满降至 75 以下。', choices: [
     { label: '开仓让步', consequence: '食物 −18、木材 −10；不满 −12', effect: { food: -18, wood: -10, discontent: -12 } },
     { label: '承诺调查', consequence: '不满 −7，希望 +2', effect: { discontent: -7, hope: 2 } },
   ] },
-  exodus: { title: '一批人离开了', text: '天亮前，他们打开城门。没有争吵，也没有告别，只带走了能背动的食物与燃料。', choices: [
+  exodus: { title: '一批人离开了', image: 'exodus', text: '天亮前，他们打开城门。没有争吵，也没有告别，只带走了能背动的食物与燃料。', choices: [
     { label: '将他们记入城史', consequence: '继续执政', effect: {} },
   ] },
 };

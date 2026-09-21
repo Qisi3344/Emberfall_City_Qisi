@@ -24,6 +24,10 @@ test('naming gates the opening and records a stable identity', () => {
 test('city decisions, ring unlocks, and a complete 20-day run', () => {
   const s = newGame();
   const doAction = action => assert.equal(act(s, action).ok, true, JSON.stringify(action));
+  const releaseWorkers = index => {
+    const count = s.slots[index]?.workers || 0;
+    if (count) doAction({ type: 'staff', index, delta: -count });
+  };
   const canResearch = id => s.researchPoints >= RESEARCH[id].points && Object.entries(RESEARCH[id].cost).every(([key, value]) => s.resources[key] >= value);
   start(s);
   doAction({ type: 'power', on: false });
@@ -58,14 +62,18 @@ test('city decisions, ring unlocks, and a complete 20-day run', () => {
     if (!houseBuilt && s.day >= 6 && s.resources.wood >= 24) { doAction({ type: 'build', index: 7, building: 'house' }); houseBuilt = true; }
     if (!clinicBuilt && s.day >= 10 && s.resources.wood >= 26 && s.resources.steel >= 5) {
       doAction({ type: 'build', index: 9, building: 'clinic' });
-      doAction({ type: 'staff', index: 6, delta: -5 });
-      doAction({ type: 'staff', index: 9, delta: Math.min(5, availableWorkers(s)) }); clinicBuilt = true;
+      releaseWorkers(6);
+      const clinicStaff = Math.min(5, availableWorkers(s));
+      if (clinicStaff) doAction({ type: 'staff', index: 9, delta: clinicStaff });
+      clinicBuilt = true;
     }
     if (!secondMine && s.day >= 15 && s.resources.wood >= 30 && s.resources.steel >= 4) {
       doAction({ type: 'build', index: 8, building: 'coal' });
-      doAction({ type: 'staff', index: 4, delta: -5 });
-      doAction({ type: 'staff', index: 5, delta: -5 });
-      doAction({ type: 'staff', index: 8, delta: 10 }); secondMine = true;
+      releaseWorkers(4);
+      releaseWorkers(5);
+      const mineStaff = Math.min(10, availableWorkers(s));
+      if (mineStaff) doAction({ type: 'staff', index: 8, delta: mineStaff });
+      secondMine = true;
     }
     if (unlocked2 && !s.researched.includes('power2') && canResearch('power2')) doAction({ type: 'research', id: 'power2' });
     if (unlocked2 && !unlocked3 && canResearch('range3')) { doAction({ type: 'research', id: 'range3' }); unlocked3 = true; }
@@ -196,12 +204,12 @@ test('state-driven survival events only appear when their conditions exist', () 
   advanceHours(s, 1); // dawn -> daily()
   assert.ok(s.event === 'foodProblem' || s.eventQueue.includes('foodProblem'));
 
-  // Clear the food event so we can inspect healthcare.
-  if (s.event) act(s, { type: 'event', choice: 0 });
-  s.eventQueue = [];
-  s.resources.food = 200;
-  s.sick = Math.max(5, Math.ceil(s.population * 0.15));
-  while (s.hour !== 5 && s.mode === 'playing') advanceHours(s, 1);
-  advanceHours(s, 1);
-  assert.ok(s.event === 'healthcareProblem' || s.eventQueue.includes('healthcareProblem'));
+  // Use a fresh city so the shortage cannot consume the one-time healthcare event.
+  const medical = newGame();
+  start(medical);
+  medical.resources.food = 200;
+  medical.sick = Math.max(5, Math.ceil(medical.population * 0.15));
+  while (medical.hour !== 5 && medical.mode === 'playing') advanceHours(medical, 1);
+  advanceHours(medical, 1);
+  assert.ok(medical.event === 'healthcareProblem' || medical.eventQueue.includes('healthcareProblem'));
 });
