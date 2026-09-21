@@ -232,8 +232,8 @@ function queueOnce(s, id) {
   queueEvent(s, id);
 }
 function queueEvent(s, id) { if (s.event !== id && !s.eventQueue.includes(id)) s.eventQueue.push(id); }
-function showNextEvent(s) {
-  if (s.event || s.mode !== 'playing') return;
+function showNextEvent(s, allowPaused = false) {
+  if (s.event || s.mode !== 'playing' || (!allowPaused && s.speed === 0)) return;
   s.eventQueue = s.eventQueue.filter(id => id !== 'despair' || s.social.despairDeadline !== null).filter(id => id !== 'riotUltimatum' || s.social.riotDeadline !== null).filter(id => id !== 'leavingTalk' || s.social.exodusState !== 'none').filter(id => id !== 'protest' || s.discontent >= 80);
   s.eventQueue.sort((a, b) => (eventPriority[a] ?? 5) - (eventPriority[b] ?? 5));
   s.event = s.eventQueue.shift() ?? null;
@@ -524,7 +524,7 @@ export function advanceHours(s, count = 1) {
       s.mode = 'lost'; s.lossReason = s.population <= 0 ? 'population' : 'generator'; s.social.rulerStatus = '城市消亡'; note(s, '城市未能继续生存。'); break;
     }
     if (finalDawn) { s.mode = s.population > 0 && s.generator.on ? 'won' : 'lost'; if (s.mode === 'lost') s.lossReason = 'generator'; note(s, s.mode === 'won' ? '风暴终于过去，炉火仍在燃烧。' : '黎明没有来到。'); break; }
-    showNextEvent(s);
+    showNextEvent(s, true);
   }
   return moved;
 }
