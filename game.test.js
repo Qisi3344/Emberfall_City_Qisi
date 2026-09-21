@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, score } from './game.js';
+import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, lawState, lawVisibility, score } from './game.js';
 const start = s => {
   assert.equal(act(s, { type: 'confirmName', name: '测试执政者', playerId: 'test-player-id' }).ok, true);
   assert.equal(act(s, { type: 'start' }).ok, true);
@@ -257,6 +257,7 @@ test('child labor scales with actual children instead of granting a flat three w
   const s = newGame();
   start(s);
   s.children = 1;
+  s.day = 2;
   const before = availableWorkers(s);
   assert.equal(act(s, { type: 'law', id: 'childWork' }).ok, true);
   assert.equal(childLaborers(s), 1);
@@ -272,6 +273,7 @@ test('child labor carries a recurring social cost and extra cold sickness risk',
   start(s);
   s.children = 3;
   s.sick = 0;
+  s.day = 2;
   s.resources.food = 999;
   s.hope = 70;
   s.discontent = 10;
@@ -279,11 +281,9 @@ test('child labor carries a recurring social cost and extra cold sickness risk',
 
   const hopeAfterLaw = s.hope;
   const discontentAfterLaw = s.discontent;
+  s.day = 15;
+  s.hour = 5;
 
-  while (s.hour !== 5 && s.mode === 'playing') {
-    if (s.event) act(s, { type: 'event', choice: 0 });
-    advanceHours(s, 1);
-  }
   advanceHours(s, 1);
 
   assert.ok(s.hope <= hopeAfterLaw, '儿童劳动应产生持续希望代价');
@@ -340,6 +340,8 @@ test('paused queued events remain hidden across unrelated renders and actions', 
 test('forced labor immediately raises discontent instead of lowering it', () => {
   const s = newGame();
   start(s);
+  s.day = 10;
+  s.laws.push('longShift', 'productionQuota');
   const before = s.discontent;
   assert.equal(act(s, { type: 'law', id: 'forcedWork' }).ok, true);
   assert.equal(s.discontent, before + 12);
@@ -369,4 +371,57 @@ test('resource-heavy event choices cannot be taken without the required stock', 
   assert.equal(s.event, 'coldHomes');
   assert.equal(s.hope, before.hope);
   assert.equal(s.discontent, before.discontent);
+});
+
+
+test('law tree reveals only the next layer and enforces day, prerequisite, and city-state locks', () => {
+  const s = newGame();
+  start(s);
+
+  assert.equal(lawVisibility(s, 'soup'), 'visible');
+  assert.equal(lawVisibility(s, 'strictRations'), 'shadow');
+  assert.equal(lawVisibility(s, 'finalRations'), 'hidden');
+
+  assert.equal(lawState(s, 'soup').status, 'available');
+  assert.equal(act(s, { type: 'law', id: 'soup' }).ok, true);
+  assert.equal(lawVisibility(s, 'strictRations'), 'visible');
+  assert.equal(lawVisibility(s, 'finalRations'), 'shadow');
+
+  s.lawDay = 0;
+  s.day = 4;
+  s.resources.food = 1;
+  assert.equal(lawState(s, 'strictRations').status, 'available');
+  assert.equal(act(s, { type: 'law', id: 'strictRations' }).ok, true);
+  assert.equal(lawVisibility(s, 'finalRations'), 'visible');
+
+  s.lawDay = 0;
+  s.day = 14;
+  assert.equal(lawState(s, 'finalRations').status, 'locked');
+  s.day = 15;
+  assert.equal(lawState(s, 'finalRations').status, 'available');
+});
+
+test('mutually exclusive child routes lock each other and deeper laws remain unavailable', () => {
+  const s = newGame();
+  start(s);
+  s.day = 2;
+  assert.equal(act(s, { type: 'law', id: 'shelter' }).ok, true);
+  assert.equal(lawState(s, 'childWork').status, 'blocked');
+  assert.equal(lawVisibility(s, 'apprenticeship'), 'visible');
+  assert.equal(lawVisibility(s, 'protectEveryone'), 'shadow');
+});
+
+test('law costs are paid and strategic reserve expands storage', () => {
+  const s = newGame();
+  start(s);
+  s.day = 13;
+  s.laws.push('soup', 'careRations');
+  s.sick = Math.ceil(s.population * 0.15);
+  s.resources.wood = 50;
+  s.resources.steel = 20;
+  s.lawDay = 0;
+  const before = { wood: s.resources.wood, steel: s.resources.steel };
+  assert.equal(act(s, { type: 'law', id: 'strategicReserve' }).ok, true);
+  assert.equal(s.resources.wood, before.wood - 20);
+  assert.equal(s.resources.steel, before.steel - 8);
 });

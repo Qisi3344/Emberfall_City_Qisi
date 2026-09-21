@@ -1,4 +1,4 @@
-import { BUILDINGS, RESEARCH, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, score } from './game.js';
+import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score } from './game.js';
 import { audio } from './audio.js';
 
 const SAVE = 'ember-city-save-v1';
@@ -29,6 +29,7 @@ let restartConfirm = false;
 let tutorialOpen = false;
 let tutorialStep = 0;
 let tutorialSource = 'settings';
+let lawBranch = 'survival';
 let notice = '';
 let noticeError = false;
 let elapsed = 0;
@@ -166,7 +167,29 @@ function staffPanel() {
   return { title: '人员调度', subtitle: `可用 ${availableWorkers(state)} / 健康劳动力 ${workforce(state)} / 已分配 ${assigned(state)}`, body: `<div class="stat-grid"><div class="stat">总人口<b>${state.population}</b></div><div class="stat">健康劳动力<b>${workforce(state)}</b></div><div class="stat">儿童<b>${state.children}</b></div><div class="stat">病患<b>${state.sick}</b></div></div><div class="section-label">工作岗位</div>${list.length ? list.map(b => `<div class="card"><div class="cardline"><div class="card-main"><strong>${BUILDINGS[b.type].name}</strong><small>${ringName(ringOf(b.i))} · ${b.workers}/${BUILDINGS[b.type].workers * b.level} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-index="${b.i}" data-delta="-1" aria-label="减少${BUILDINGS[b.type].name}工人">−</button><button data-act="staff" data-index="${b.i}" data-delta="1" aria-label="增加${BUILDINGS[b.type].name}工人">+</button></div></div></div>`).join('') : '<p class="hint">先建造生产或服务建筑，才能分配工人。</p>'}` };
 }
 function lawsPanel() {
-  return { title: '法令册', subtitle: state.lawDay === state.day ? '今日已签署法令' : '今日可签署一条法令', body: Object.entries(LAWS).map(([id,l]) => `<div class="card"><div class="cardline"><div class="card-main"><strong>${l.name}</strong><small>${l.note}</small></div><button data-act="law" data-id="${id}" ${state.laws.includes(id) || (l.excludes && state.laws.includes(l.excludes)) || state.lawDay === state.day ? 'disabled' : ''}>${state.laws.includes(id) ? '已签署' : '签署'}</button></div></div>`).join('') };
+  const branch = LAW_BRANCHES[lawBranch] ? lawBranch : 'survival';
+  const branchLaws = Object.entries(LAWS).filter(([, law]) => law.branch === branch);
+  const tiers = [...new Set(branchLaws.map(([, law]) => law.tier))].sort((a,b) => a - b);
+  const tabs = Object.entries(LAW_BRANCHES).map(([id, meta]) => `<button class="${branch === id ? 'active' : ''}" data-law-branch="${id}"><b>${meta.name}</b><small>${meta.note}</small></button>`).join('');
+  const rows = tiers.map(tier => {
+    const nodes = branchLaws.filter(([, law]) => law.tier === tier).map(([id, law]) => {
+      const visibility = lawVisibility(state, id);
+      if (visibility === 'hidden') return '';
+      if (visibility === 'shadow') return `<div class="law-node shadow lane-${law.lane || 'center'}"><span class="law-seal">?</span><strong>未揭示法令</strong><small>签署上级法令后显示</small></div>`;
+      const info = lawState(state, id);
+      const affordable = !law.cost || Object.entries(law.cost).every(([key,value]) => state.resources[key] >= value);
+      const disabled = info.status !== 'available' || state.lawDay === state.day || !affordable;
+      const stateText = info.status === 'signed' ? '已签署' : info.status === 'blocked' ? '路线互斥' : info.status === 'available' ? (affordable ? '可签署' : '物资不足') : info.reason;
+      const cost = law.cost ? `<em>${costText(law.cost)}</em>` : '';
+      return `<div class="law-node ${info.status} lane-${law.lane || 'center'}"><span class="law-seal">${info.status === 'signed' ? '✓' : String(tier + 1).padStart(2,'0')}</span><strong>${law.name}</strong><small>${law.note}</small><div class="law-node-meta"><span>${stateText}</span>${cost}</div><button data-act="law" data-id="${id}" ${disabled ? 'disabled' : ''}>${info.status === 'signed' ? '已签署' : '签署'}</button></div>`;
+    }).filter(Boolean).join('');
+    return nodes ? `<div class="law-tier tier-${tier}">${nodes}</div>` : '';
+  }).join('');
+  return {
+    title: '法令树',
+    subtitle: state.lawDay === state.day ? '今日已签署法令 · 明日可继续' : '今日可签署一条法令',
+    body: `<div class="law-tabs">${tabs}</div><div class="law-branch-head"><b>${LAW_BRANCHES[branch].name}</b><span>第 ${state.day} 天</span></div><div class="law-tree">${rows}</div><p class="law-legend"><span>● 已签署</span><span>○ 可见 / 待满足</span><span>？ 未揭示</span></p>`
+  };
 }
 function researchPanel() {
   return { title: '工坊研究', subtitle: `研究点 ${fmt(state.researchPoints)}`, body: `<p class="hint">分配工坊工人，在工作时段积累研究点；研究还需要木材和钢材。</p>${Object.entries(RESEARCH).map(([id,t]) => `<div class="card"><div class="cardline"><div class="card-main"><strong>${t.name}</strong><small>${t.note}</small><small>${t.points} 研究点 · ${costText(t.cost)}${t.requires ? ` · 需先完成${RESEARCH[t.requires].name}` : ''}</small></div><button data-act="research" data-id="${id}" ${state.researched.includes(id) || (t.requires && !state.researched.includes(t.requires)) ? 'disabled' : ''}>${state.researched.includes(id) ? '已完成' : '研究'}</button></div></div>`).join('')}` };
@@ -286,6 +309,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('button'); if (!button) return;
   audio.play(button.dataset.act === 'build' ? 'place' : 'ui');
   if (button.dataset.slot !== undefined) { selected = Number(button.dataset.slot); panel = 'slot'; render(); return; }
+  if (button.dataset.lawBranch) { lawBranch = button.dataset.lawBranch; panel = 'laws'; render(); return; }
   if (button.dataset.open) { panel = button.dataset.open; if (panel === 'build' && state.slots[selected]) selected = state.slots.findIndex((b,i) => !b && ringOf(i) <= state.generator.range); render(); return; }
   if (button.dataset.speed !== undefined) { state.speed = Number(button.dataset.speed); elapsed = 0; save(); render(); return; }
   const action = button.dataset.act, id = button.dataset.id;
