@@ -32,10 +32,6 @@ export const LAWS = {
 };
 
 export const EVENTS = {
-  3: { title: '第一场寒潮', text: '寒潮突然压低了城内温度。照看病患的人请求多分一些燃料，仓库主管却提醒你，煤炭储备并不宽裕。', choices: [
-    { label: '优先照顾病患', consequence: '煤炭 −15，病患 −3', effect: { coal: -15, sick: -3 } },
-    { label: '保留燃料', consequence: '不满 +6', effect: { discontent: 6 } },
-  ] },
   6: { title: '城门外的脚步', text: '一队幸存者抵达城门。收留他们会增加劳动力，也需要更多食物和住处。', choices: [
     { label: '打开城门', consequence: '人口 +8，食物 −12，希望 +5', effect: { population: 8, food: -12, hope: 5 } },
     { label: '只能祝他们好运', consequence: '希望 −8', effect: { hope: -8 } },
@@ -58,6 +54,38 @@ export const EVENTS = {
   ] },
   20: { title: '风暴降临', text: '外部生产全部停止。煤炭消耗加倍。请撑过接下来的二十四小时。', choices: [
     { label: '守住炉火', consequence: '进入最终倒计时', effect: {} },
+  ] },
+  foodProblem: { title: '口粮见底', text: '配给队报告，库存已经不足以覆盖所有人的一天口粮。饥饿还没有演变成骚乱，但抱怨正在增加。', choices: [
+    { label: '优先保证基本配给', consequence: '希望 +2，不满 −1', effect: { hope: 2, discontent: -1 } },
+    { label: '维持现有配给', consequence: '不满 +4', effect: { discontent: 4 } },
+  ] },
+  foodRiot: { title: '饥饿正在变成愤怒', text: '连续缺粮让人群聚到仓库前。现在他们要的不是解释，而是食物。', choices: [
+    { label: '公开配给账目并优先供餐', consequence: '希望 +2，不满 −5', effect: { hope: 2, discontent: -5 } },
+    { label: '驱散人群', consequence: '希望 −4，不满 +7', effect: { hope: -4, discontent: 7 } },
+  ] },
+  healthcareProblem: { title: '病患无人安置', text: '病患人数持续增加，而城里还没有可用的医务所。临时照料已经快撑不住了。', choices: [
+    { label: '调整资源，优先筹建医疗', consequence: '希望 +2', effect: { hope: 2 } },
+    { label: '先维持现状', consequence: '不满 +4', effect: { discontent: 4 } },
+  ] },
+  healthcareOverload: { title: '医疗能力不足', text: '医务所已经存在，但病患仍在增加。床位与值守人员都开始吃紧。', choices: [
+    { label: '优先医疗调度', consequence: '病患 −1，希望 +1', effect: { sick: -1, hope: 1 } },
+    { label: '让医疗系统自行周转', consequence: '不满 +4', effect: { discontent: 4 } },
+  ] },
+  healthcareProtest: { title: '病患家属的抗议', text: '医疗问题迟迟没有缓解。病患家属聚在炉边，要求城市立刻增加治疗能力。', choices: [
+    { label: '重新调整岗位与供暖', consequence: '不满 −4', effect: { discontent: -4 } },
+    { label: '拒绝改变当前安排', consequence: '希望 −4，不满 +6', effect: { hope: -4, discontent: 6 } },
+  ] },
+  housingProblem: { title: '有人没有住处', text: '夜里仍有人睡在公共区域。住房容量已经低于当前人口，寒风开始钻进临时铺位。', choices: [
+    { label: '优先安排临时床位', consequence: '希望 +1，不满 −2', effect: { hope: 1, discontent: -2 } },
+    { label: '暂时忍耐', consequence: '希望 −2，不满 +3', effect: { hope: -2, discontent: 3 } },
+  ] },
+  coldHomes: { title: '住宅正在失温', text: '越来越多住宅降到危险温度。问题不是某一座建筑，而是整片居住区正在变冷。', choices: [
+    { label: '优先保证居民区供暖', consequence: '希望 +2', effect: { hope: 2 } },
+    { label: '生产优先', consequence: '不满 +4', effect: { discontent: 4 } },
+  ] },
+  coldHomesProtest: { title: '他们受够了寒冷', text: '住宅持续失温，居民开始公开质问供暖安排。寒冷已经从生存问题变成了社会问题。', choices: [
+    { label: '重新调整供暖优先级', consequence: '不满 −4', effect: { discontent: -4 } },
+    { label: '拒绝调整', consequence: '希望 −4，不满 +6', effect: { hope: -4, discontent: 6 } },
   ] },
   leavingTalk: { title: '有人开始谈论离开', text: '昨夜，外墙边留下了一句话：“这里不会有春天。”越来越多人开始收拾行李。', choices: [
     { label: '开放议事与配给', consequence: '食物 −8，希望 +5', effect: { food: -8, hope: 5 } },
@@ -107,7 +135,7 @@ export function newGame() {
     hope: 68, discontent: 21, lowestHope: 68, highestDiscontent: 21,
     generator: { on: true, manualOff: false, power: 1, range: 1, overdrive: false, stress: 0, outage: 0 },
     slots, researchPoints: 0, researched: [], laws: [], lawDay: 0,
-    event: null, eventQueue: [], journal: ['第 1 天，发电机重新点火。'],
+    event: null, eventQueue: [], eventState: { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 }, journal: ['第 1 天，发电机重新点火。'],
     social: newSocial(), lossReason: null,
     message: '先建煤矿、猎人站与工坊，分配工人。',
   };
@@ -144,7 +172,18 @@ function pay(s, cost) { for (const [key, value] of Object.entries(cost)) s.resou
 function note(s, message) { s.message = message; s.journal.unshift(`第 ${s.day} 天：${message}`); s.journal.length = Math.min(20, s.journal.length); }
 function updateExtremes(s) { s.hope = cap(round(s.hope)); s.discontent = cap(round(s.discontent)); s.lowestHope = Math.min(s.lowestHope, s.hope); s.highestDiscontent = Math.max(s.highestDiscontent, s.discontent); }
 function result(ok, message) { return { ok, message }; }
-const eventPriority = { riotUltimatum: 0, despair: 1, exodus: 2, protest: 3, leavingTalk: 4 };
+const eventPriority = { riotUltimatum: 0, despair: 1, exodus: 2, foodRiot: 3, healthcareProtest: 3, coldHomesProtest: 3, protest: 4, foodProblem: 5, healthcareProblem: 5, healthcareOverload: 5, housingProblem: 5, coldHomes: 5, leavingTalk: 6 };
+function eventState(s) {
+  s.eventState ??= { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 };
+  s.eventState.seen ??= [];
+  return s.eventState;
+}
+function seenEvent(s, id) { return eventState(s).seen.includes(id); }
+function queueOnce(s, id) {
+  if (seenEvent(s, id)) return;
+  eventState(s).seen.push(id);
+  queueEvent(s, id);
+}
 function queueEvent(s, id) { if (s.event !== id && !s.eventQueue.includes(id)) s.eventQueue.push(id); }
 function showNextEvent(s) {
   if (s.event || s.mode !== 'playing') return;
@@ -351,6 +390,28 @@ function daily(s) {
   s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
   updateExtremes(s);
+
+  // 条件事件：像《冰汽时代》一样，让城市当前状态自己生成问题，
+  // 而不是按固定日期假设玩家已经建了某个建筑。
+  const es = eventState(s);
+  es.foodShortageDays = missing > 0 ? es.foodShortageDays + 1 : 0;
+  es.untreatedSickDays = s.sick >= Math.max(4, Math.ceil(s.population * 0.12)) ? es.untreatedSickDays + 1 : 0;
+  es.coldHomesDays = avgHeat < -15 ? es.coldHomesDays + 1 : 0;
+  es.homelessDays = exposed > 0 ? es.homelessDays + 1 : 0;
+
+  const hasClinic = s.slots.some(b => b?.type === 'clinic');
+  const staffedClinic = s.slots.some(b => b?.type === 'clinic' && b.workers > 0);
+
+  if (es.foodShortageDays >= 1) queueOnce(s, 'foodProblem');
+  if (es.foodShortageDays >= 2) queueOnce(s, 'foodRiot');
+
+  if (es.untreatedSickDays >= 1) queueOnce(s, hasClinic ? 'healthcareOverload' : 'healthcareProblem');
+  if (es.untreatedSickDays >= 2 && (!hasClinic || !staffedClinic || s.sick >= Math.ceil(s.population * 0.18))) queueOnce(s, 'healthcareProtest');
+
+  if (es.homelessDays >= 1) queueOnce(s, 'housingProblem');
+  if (es.coldHomesDays >= 1) queueOnce(s, 'coldHomes');
+  if (es.coldHomesDays >= 2) queueOnce(s, 'coldHomesProtest');
+
   if (s.hope < 20) s.social.leavingIntent = Math.min(s.population, round(s.social.leavingIntent + deaths * 2 + Math.ceil(missing / 4) + Math.ceil(exposed / 5)));
   if (deaths) note(s, `${deaths} 人未能撑过寒夜。`);
   else if (missing) note(s, '粮食不足，饥饿正在蔓延。');

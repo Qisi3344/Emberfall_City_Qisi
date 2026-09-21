@@ -174,3 +174,34 @@ test('leaving intent does not remove workers and staffing recovers after sicknes
   assert.ok(availableWorkers(s) > 0);
   assert.equal(act(s, { type: 'staff', index: 3, delta: 5 }).ok, true, '撤回其他岗位后应能给医务所重新派人');
 });
+
+
+test('state-driven survival events only appear when their conditions exist', () => {
+  const s = newGame();
+  start(s);
+
+  // Day 3 itself should no longer force a medical/cold event.
+  while (s.day < 3 && s.mode === 'playing') {
+    if (s.event) act(s, { type: 'event', choice: 0 });
+    advanceHours(s, 1);
+  }
+  assert.notEqual(s.event, 3);
+
+  // A real food shortage should create the food problem.
+  s.resources.food = 0;
+  while (s.hour !== 5 && s.mode === 'playing') {
+    if (s.event) act(s, { type: 'event', choice: 0 });
+    advanceHours(s, 1);
+  }
+  advanceHours(s, 1); // dawn -> daily()
+  assert.ok(s.event === 'foodProblem' || s.eventQueue.includes('foodProblem'));
+
+  // Clear the food event so we can inspect healthcare.
+  if (s.event) act(s, { type: 'event', choice: 0 });
+  s.eventQueue = [];
+  s.resources.food = 200;
+  s.sick = Math.max(5, Math.ceil(s.population * 0.15));
+  while (s.hour !== 5 && s.mode === 'playing') advanceHours(s, 1);
+  advanceHours(s, 1);
+  assert.ok(s.event === 'healthcareProblem' || s.eventQueue.includes('healthcareProblem'));
+});
