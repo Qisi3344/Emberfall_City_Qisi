@@ -1195,3 +1195,29 @@
   box-shadow:0 0 0 3px #42565e12,inset 0 0 0 3px #42565e10;
   opacity:.28;
 }
+
+
+/* Low-discontent order state */
+.meter.anger>span{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+.order-tag{
+  display:inline-block;
+  padding:1px 3px;
+  border:1px solid #61746880;
+  background:#1a2722cc;
+  color:#9fb69f;
+  font-style:normal;
+  font-size:6px;
+  line-height:1.2;
+  letter-spacing:.08em;
+}
+.meter.anger.stable .track i{
+  background:#879d88;
+}
+.meter.anger.stable>b{
+  color:#b6c9b6;
+}
