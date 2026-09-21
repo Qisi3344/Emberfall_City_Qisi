@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, score } from './game.js';
+import { RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, score } from './game.js';
 const start = s => {
   assert.equal(act(s, { type: 'confirmName', name: '测试执政者', playerId: 'test-player-id' }).ok, true);
   assert.equal(act(s, { type: 'start' }).ok, true);
@@ -250,4 +250,43 @@ test('first refugee wave is guaranteed and accepts a dynamic 2-10 person group',
   assert.equal(s.population, before + offer.count);
   assert.equal(s.refugees.arrivals, 1);
   assert.equal(s.refugees.offer, null);
+});
+
+
+test('child labor scales with actual children instead of granting a flat three workers', () => {
+  const s = newGame();
+  start(s);
+  s.children = 1;
+  const before = availableWorkers(s);
+  assert.equal(act(s, { type: 'law', id: 'childWork' }).ok, true);
+  assert.equal(childLaborers(s), 1);
+  assert.equal(availableWorkers(s), before + 1);
+
+  s.children = 0;
+  assert.equal(childLaborers(s), 0);
+  assert.equal(availableWorkers(s), s.population - s.sick);
+});
+
+test('child labor carries a recurring social cost and extra cold sickness risk', () => {
+  const s = newGame();
+  start(s);
+  s.children = 3;
+  s.sick = 0;
+  s.resources.food = 999;
+  s.hope = 70;
+  s.discontent = 10;
+  assert.equal(act(s, { type: 'law', id: 'childWork' }).ok, true);
+
+  const hopeAfterLaw = s.hope;
+  const discontentAfterLaw = s.discontent;
+
+  while (s.hour !== 5 && s.mode === 'playing') {
+    if (s.event) act(s, { type: 'event', choice: 0 });
+    advanceHours(s, 1);
+  }
+  advanceHours(s, 1);
+
+  assert.ok(s.hope <= hopeAfterLaw, '儿童劳动应产生持续希望代价');
+  assert.ok(s.discontent >= discontentAfterLaw, '儿童劳动应产生持续不满代价');
+  assert.ok(s.sick >= 1, '严寒环境下儿童劳动应增加病患风险');
 });

@@ -26,7 +26,7 @@ export const LAWS = {
   soup: { name: '节粮汤', note: '食物消耗减少 20%，每日增加不满', hope: -2, discontent: 4 },
   longShift: { name: '延长工时', note: '工作时间增加至 06:00—20:00，日增不满', hope: -3, discontent: 6 },
   shelter: { name: '儿童庇护', note: '解锁儿童庇护所，提升希望', hope: 7, discontent: 0, excludes: 'childWork' },
-  childWork: { name: '儿童劳动', note: '增加 3 名劳动力，但希望下降', hope: -10, discontent: 5, excludes: 'shelter' },
+  childWork: { name: '儿童劳动', note: '最多让 3 名儿童加入劳动力；每日希望 −1、不满 +1，严寒时儿童更易生病', hope: -10, discontent: 5, excludes: 'shelter' },
   venue: { name: '公共娱乐', note: '解锁夜间会所', hope: 0, discontent: -3 },
   forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，长期增加不满', hope: -14, discontent: -8 },
 };
@@ -190,7 +190,8 @@ export function newGame() {
 export const ringOf = index => index < 6 ? 1 : index < 14 ? 2 : 3;
 export const housing = s => s.slots.reduce((n, b) => n + (b?.type === 'house' ? [0, 10, 15, 20][b.level] : 0), 0);
 export const assigned = s => s.slots.reduce((n, b) => n + (b?.workers || 0), 0);
-export const workforce = s => Math.max(0, s.population - s.children - s.sick + (s.laws.includes('childWork') ? 3 : 0));
+export const childLaborers = s => s.laws.includes('childWork') ? Math.min(3, Math.max(0, s.children)) : 0;
+export const workforce = s => Math.max(0, s.population - s.children - s.sick + childLaborers(s));
 export const availableWorkers = s => Math.max(0, workforce(s) - assigned(s));
 
 // 人口减少、生病或离城后，旧岗位分配可能超过当前健康劳动力。
@@ -427,7 +428,7 @@ export function act(s, action) {
 }
 
 function daily(s) {
-  const labor = Math.min(1, Math.max(0, s.population - s.children - s.sick + (s.laws.includes('childWork') ? 3 : 0)) / Math.max(1, assigned(s)));
+  const labor = Math.min(1, workforce(s) / Math.max(1, assigned(s)));
   const workers = s.slots.filter(b => b?.type === 'hunter').reduce((n, b) => n + b.workers, 0) * labor;
   if (s.day < 20) s.resources.food = Math.min(storageLimit(s), round(s.resources.food + workers * (s.day === 19 ? 0.7 : 1.8)));
   const need = s.population * (s.laws.includes('soup') ? 0.24 : 0.3);
@@ -437,7 +438,8 @@ function daily(s) {
   const avgHeat = homes.length ? homes.reduce((a, b) => a + b, 0) / homes.length : -50;
   const exposed = Math.max(0, s.population - housing(s));
   const cold = Math.max(0, Math.ceil(s.population * Math.max(0, -avgHeat - 3) / 700));
-  const newSick = Math.ceil(exposed * 0.12) + cold + Math.ceil(missing * 0.6);
+  const childLaborSick = childLaborers(s) > 0 && avgHeat < -10 ? 1 : 0;
+  const newSick = Math.ceil(exposed * 0.12) + cold + Math.ceil(missing * 0.6) + childLaborSick;
   const clinicWorkers = s.slots.filter(b => b?.type === 'clinic').reduce((n, b) => n + b.workers, 0);
   const treated = Math.min(s.sick + newSick, Math.floor(clinicWorkers * 0.8));
   s.sick = Math.min(s.population, s.sick + newSick - treated);
@@ -445,8 +447,8 @@ function daily(s) {
   const deaths = Math.min(s.sick, Math.max(0, Math.floor((s.sick - s.population * 0.27) / 5)) + Math.floor(missing / 8));
   s.sick -= deaths; s.population -= deaths; s.dead += deaths;
   normalizeStaffing(s);
-  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0);
-  s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
+  s.hope += (housing(s) >= s.population ? 1 : -2) - (missing ? 4 : 0) - (deaths ? deaths * 2 : 0) + (s.slots.some(b => b?.type === 'shelter') ? 2 : 0) - (s.laws.includes('forcedWork') ? 1 : 0) - (s.laws.includes('childWork') ? 1 : 0);
+  s.discontent += (exposed ? 2 : -1) + (missing ? 5 : 0) + (s.laws.includes('longShift') ? 2 : 0) + (s.laws.includes('soup') ? 1 : 0) + (s.laws.includes('forcedWork') ? 2 : 0) + (s.laws.includes('childWork') ? 1 : 0) + (s.social.aftermathHours > 0 ? 2 : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
   updateExtremes(s);
 
@@ -493,7 +495,7 @@ export function advanceHours(s, count = 1) {
     if (s.generator.stress >= 100) { s.generator.overdrive = false; s.generator.on = false; s.generator.stress = 55; note(s, '超载引发故障，发电机停机！'); }
     const isWork = s.laws.includes('longShift') ? s.hour >= 6 && s.hour < 20 : s.hour >= 8 && s.hour < 18;
     if (isWork) {
-      const labor = Math.min(1, Math.max(0, s.population - s.children - s.sick + (s.laws.includes('childWork') ? 3 : 0)) / Math.max(1, assigned(s)));
+      const labor = Math.min(1, workforce(s) / Math.max(1, assigned(s)));
       for (let i = 0; i < 24; i++) {
         const b = s.slots[i]; if (!b || !b.workers) continue;
         const outside = ['coal', 'saw', 'steel'].includes(b.type);
