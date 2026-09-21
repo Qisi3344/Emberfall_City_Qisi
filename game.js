@@ -238,10 +238,25 @@ function showNextEvent(s, allowPaused = false) {
   s.eventQueue.sort((a, b) => (eventPriority[a] ?? 5) - (eventPriority[b] ?? 5));
   s.event = s.eventQueue.shift() ?? null;
 }
-function syncSocial(s) {
+function syncOrder(s, countHour = false) {
   const c = s.social;
   c.calmHours ??= 0;
   c.stableOrder ??= false;
+  if (s.discontent > 15) {
+    c.calmHours = 0;
+    c.stableOrder = false;
+    return;
+  }
+  if (s.discontent <= 10) {
+    if (countHour) c.calmHours++;
+    if (c.calmHours >= 6) c.stableOrder = true;
+  } else if (!c.stableOrder) {
+    c.calmHours = 0;
+  }
+}
+function syncSocial(s) {
+  const c = s.social;
+  syncOrder(s);
   if (c.riotDeadline !== null && s.discontent < 75) {
     c.riotDeadline = null; c.aftermathHours = 24; note(s, '居民撤回最后通牒，城中仍留有余波。');
   }
@@ -286,17 +301,7 @@ function flee(s, count) {
 }
 function tickSocial(s) {
   const c = s.social;
-  c.calmHours ??= 0;
-  c.stableOrder ??= false;
-  if (s.discontent <= 10) {
-    c.calmHours++;
-    if (c.calmHours >= 6) c.stableOrder = true;
-  } else if (s.discontent > 15) {
-    c.calmHours = 0;
-    c.stableOrder = false;
-  } else if (!c.stableOrder) {
-    c.calmHours = 0;
-  }
+  syncOrder(s, true);
   if (c.aftermathHours > 0) c.aftermathHours--;
   if (c.riotDeadline !== null) {
     if (s.discontent < 75) syncSocial(s);
