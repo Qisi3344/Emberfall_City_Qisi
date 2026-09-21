@@ -23,6 +23,7 @@ test('naming gates the opening and records a stable identity', () => {
 
 test('city decisions, ring unlocks, and a complete 20-day run', () => {
   const s = newGame();
+  s.population = 30; s.initialPopulation = 30; s.children = 6; s.sick = 0;
   const doAction = action => assert.equal(act(s, action).ok, true, JSON.stringify(action));
   const releaseWorkers = index => {
     const count = s.slots[index]?.workers || 0;
@@ -110,7 +111,7 @@ test('hope causes a staged departure and capped resource loss', () => {
   advanceHours(s, 18);
   assert.ok(s.social.fled > 0);
   assert.equal(s.event, 'exodus');
-  assert.equal(s.population, 30 - s.social.fled);
+  assert.equal(s.population, s.initialPopulation - s.social.fled);
   assert.ok(s.social.lastFlight.food <= s.social.lastFlight.count * 0.8);
   assert.ok(s.resources.wood <= before.wood);
   assert.equal(score(s), Math.round(s.population * 100 + s.resources.coal + s.resources.food + s.hope * 10 - s.dead * 50 - s.social.fled * 30));
@@ -171,7 +172,7 @@ test('leaving intent does not remove workers and staffing recovers after sicknes
   const s = newGame();
   start(s);
   s.social.leavingIntent = 8;
-  assert.equal(availableWorkers(s), 24, '想离城但尚未离城的人仍应属于劳动力');
+  assert.equal(availableWorkers(s), s.population - s.children - s.sick, '想离城但尚未离城的人仍应属于劳动力');
 
   assert.equal(act(s, { type: 'build', index: 2, building: 'hunter' }).ok, true);
   assert.equal(act(s, { type: 'build', index: 3, building: 'clinic' }).ok, true);
@@ -212,4 +213,41 @@ test('state-driven survival events only appear when their conditions exist', () 
   while (medical.hour !== 5 && medical.mode === 'playing') advanceHours(medical, 1);
   advanceHours(medical, 1);
   assert.ok(medical.event === 'healthcareProblem' || medical.eventQueue.includes('healthcareProblem'));
+});
+
+
+test('opening population and refugee waves are randomized within safe bounds', () => {
+  for (let n = 0; n < 30; n++) {
+    const s = newGame();
+    assert.ok(s.population >= 22 && s.population <= 28);
+    assert.equal(s.initialPopulation, s.population);
+    assert.ok(s.children >= 3 && s.children < s.population);
+    assert.ok(s.sick >= 0 && s.sick <= 2);
+    assert.ok(s.refugees.waves.length >= 1 && s.refugees.waves.length <= 3);
+    assert.ok(s.refugees.waves[0].earliest >= 5 && s.refugees.waves[0].earliest <= 8);
+    assert.equal(s.refugees.waves[0].required, true);
+  }
+});
+
+test('first refugee wave is guaranteed and accepts a dynamic 2-10 person group', () => {
+  const s = newGame();
+  start(s);
+  s.resources.coal = 999;
+  s.resources.food = 999;
+  s.hope = 70;
+  s.discontent = 10;
+
+  for (let i = 0; i < 24 * 9 && s.mode === 'playing' && s.event !== 'refugees'; i++) {
+    if (s.event) act(s, { type: 'event', choice: 0 });
+    advanceHours(s, 1);
+  }
+
+  assert.equal(s.event, 'refugees');
+  assert.ok(s.refugees.offer.count >= 2 && s.refugees.offer.count <= 10);
+  const before = s.population;
+  const offer = { ...s.refugees.offer };
+  assert.equal(act(s, { type: 'event', choice: 0 }).ok, true);
+  assert.equal(s.population, before + offer.count);
+  assert.equal(s.refugees.arrivals, 1);
+  assert.equal(s.refugees.offer, null);
 });
