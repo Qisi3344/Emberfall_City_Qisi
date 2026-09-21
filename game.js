@@ -28,7 +28,7 @@ export const LAWS = {
   shelter: { name: '儿童庇护', note: '解锁儿童庇护所，提升希望', hope: 7, discontent: 0, excludes: 'childWork' },
   childWork: { name: '儿童劳动', note: '最多让 3 名儿童加入劳动力；每日希望 −1、不满 +1，严寒时儿童更易生病', hope: -10, discontent: 5, excludes: 'shelter' },
   venue: { name: '公共娱乐', note: '解锁夜间会所', hope: 0, discontent: -3 },
-  forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，长期增加不满', hope: -14, discontent: -8 },
+  forcedWork: { name: '强制劳动', note: '生产提高 10%；希望大降，立即并持续增加不满', hope: -14, discontent: 12 },
 };
 
 export const EVENTS = {
