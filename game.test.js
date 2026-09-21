@@ -335,3 +335,54 @@ test('paused queued events remain hidden across unrelated renders and actions', 
   advanceHours(s, 1);
   assert.equal(s.event, 'foodProblem');
 });
+
+
+test('very low discontent becomes stable order after six in-game hours', () => {
+  const s = newGame();
+  start(s);
+  s.discontent = 0;
+  s.social.calmHours = 0;
+  s.social.stableOrder = false;
+  advanceHours(s, 5);
+  assert.equal(s.social.stableOrder, false);
+  assert.equal(s.social.calmHours, 5);
+  advanceHours(s, 1);
+  assert.equal(s.social.stableOrder, true);
+  assert.equal(s.social.calmHours, 6);
+
+  s.discontent = 16;
+  advanceHours(s, 1);
+  assert.equal(s.social.stableOrder, false);
+  assert.equal(s.social.calmHours, 0);
+});
+
+test('stable order gives a small production bonus', () => {
+  const base = newGame();
+  start(base);
+  base.population = 30;
+  base.children = 0;
+  base.sick = 0;
+  base.hour = 8;
+  base.resources.wood = 100;
+  assert.equal(act(base, { type: 'build', index: 2, building: 'saw' }).ok, true);
+  assert.equal(act(base, { type: 'staff', index: 2, delta: 10 }).ok, true);
+
+  const stable = JSON.parse(JSON.stringify(base));
+  stable.social.stableOrder = true;
+  stable.social.calmHours = 6;
+
+  const baseWood = base.resources.wood;
+  const stableWood = stable.resources.wood;
+  advanceHours(base, 1);
+  advanceHours(stable, 1);
+
+  assert.ok(stable.resources.wood - stableWood > base.resources.wood - baseWood);
+});
+
+test('forced labor immediately raises discontent instead of lowering it', () => {
+  const s = newGame();
+  start(s);
+  const before = s.discontent;
+  assert.equal(act(s, { type: 'law', id: 'forcedWork' }).ok, true);
+  assert.equal(s.discontent, before + 12);
+});
