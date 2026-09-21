@@ -305,3 +305,33 @@ test('paused player actions queue social events without popping them until time 
   advanceHours(s, 1);
   assert.equal(s.event, 'protest', '手动或自动推进时间后再显示排队事件');
 });
+
+
+test('paused event resolution does not chain into the next queued event', () => {
+  const s = newGame();
+  start(s);
+  s.speed = 0;
+  s.event = 'foodProblem';
+  s.eventQueue.push('housingProblem');
+
+  assert.equal(act(s, { type: 'event', choice: 0 }).ok, true);
+  assert.equal(s.event, null, '暂停时处理完当前事件后不应自动弹出下一个');
+  assert.ok(s.eventQueue.includes('housingProblem'));
+
+  advanceHours(s, 1);
+  assert.equal(s.event, 'housingProblem', '玩家主动推进时间后才显示排队事件');
+});
+
+test('paused queued events remain hidden across unrelated renders and actions', () => {
+  const s = newGame();
+  start(s);
+  s.speed = 0;
+  s.eventQueue.push('foodProblem');
+
+  assert.equal(act(s, { type: 'build', index: 2, building: 'saw' }).ok, true);
+  assert.equal(s.event, null);
+  assert.ok(s.eventQueue.includes('foodProblem'));
+
+  advanceHours(s, 1);
+  assert.equal(s.event, 'foodProblem');
+});
