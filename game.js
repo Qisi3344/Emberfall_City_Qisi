@@ -371,21 +371,21 @@ export function act(s, action) {
       if (!law || s.laws.includes(action.id) || (law.excludes && s.laws.includes(law.excludes))) return result(false, '该法令不可签署。');
       if (s.lawDay === s.day) return result(false, '今天已签署一条法令。');
       s.laws.push(action.id); s.lawDay = s.day; s.hope += law.hope; s.discontent += law.discontent; updateExtremes(s);
-      note(s, `签署法令：${law.name}。`); syncSocial(s); showNextEvent(s); return result(true, s.message);
+      note(s, `签署法令：${law.name}。`); syncSocial(s); return result(true, s.message);
     }
     case 'relief': {
       if (s.hope > 20 || s.social.lastReliefDay === s.day) return result(false, '当前不能再次发放救济。');
       const cost = { food: 12, wood: 8 };
       if (!canPay(s, cost)) return result(false, '救济所需食物或木材不足。');
       pay(s, cost); s.social.lastReliefDay = s.day; s.hope += 6; s.discontent -= 2; updateExtremes(s);
-      note(s, '发放救济，居民重新看见一点希望。'); syncSocial(s); showNextEvent(s); return result(true, s.message);
+      note(s, '发放救济，居民重新看见一点希望。'); syncSocial(s); return result(true, s.message);
     }
     case 'concession': {
       if (s.social.riotDeadline === null || s.social.lastConcessionDay === s.day) return result(false, '当前不能再次作出让步。');
       const cost = { food: 10, wood: 10 };
       if (!canPay(s, cost)) return result(false, '让步所需食物或木材不足。');
       pay(s, cost); s.social.lastConcessionDay = s.day; s.discontent -= 8; s.hope += 2; updateExtremes(s);
-      note(s, '向抗议人群作出让步。'); syncSocial(s); showNextEvent(s); return result(true, s.message);
+      note(s, '向抗议人群作出让步。'); syncSocial(s); return result(true, s.message);
     }
     case 'power': {
       if (action.on === false || (action.on === undefined && s.generator.on)) { s.generator.on = false; s.generator.manualOff = true; }
