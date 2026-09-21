@@ -199,6 +199,7 @@ test('state-driven survival events only appear when their conditions exist', () 
   // Clear the food event so we can inspect healthcare.
   if (s.event) act(s, { type: 'event', choice: 0 });
   s.eventQueue = [];
+  s.resources.food = 200;
   s.sick = Math.max(5, Math.ceil(s.population * 0.15));
   while (s.hour !== 5 && s.mode === 'playing') advanceHours(s, 1);
   advanceHours(s, 1);
