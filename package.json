@@ -1,0 +1,10 @@
+{
+  "name": "ember-city",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "test": "node --test",
+    "mcp": "node mcp-server.mjs"
+  }
+}
