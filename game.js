@@ -32,9 +32,9 @@ export const LAWS = {
 };
 
 export const EVENTS = {
-  6: { title: '城门外的脚步', image: 'survivors', text: '一队幸存者抵达城门。收留他们会增加劳动力，也需要更多食物和住处。', choices: [
-    { label: '打开城门', consequence: '人口 +8，食物 −12，希望 +5', effect: { population: 8, food: -12, hope: 5 } },
-    { label: '只能祝他们好运', consequence: '希望 −8', effect: { hope: -8 } },
+  refugees: { title: '城门外的脚步', image: 'survivors', text: '一队幸存者抵达城门，请求进入余烬城。', choices: [
+    { label: '打开城门', consequence: '接纳这批幸存者', effect: {} },
+    { label: '只能祝他们好运', consequence: '拒绝他们入城', effect: {} },
   ] },
   10: { title: '加班事故', image: 'accident', text: '工人从高处摔落。城市要求你决定是否停工检修。', choices: [
     { label: '停工救治', consequence: '木材 −15，病患 −3，希望 +4', effect: { wood: -15, sick: -3, hope: 4 } },
@@ -124,18 +124,64 @@ export function weather(day) {
   return [-70, -70, -80, -90, -100, -120][Math.min(5, day - 15)];
 }
 
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const weightedRefugeeCount = () => Math.round((randInt(2, 10) + randInt(2, 10)) / 2);
+function makeRefugeePlan() {
+  const totalWaves = randInt(1, 3);
+  const waves = [{ earliest: randInt(5, 8), latest: 8, required: true, done: false }];
+  if (totalWaves >= 2) waves.push({ earliest: randInt(10, 12), latest: 14, required: false, done: false });
+  if (totalWaves >= 3) waves.push({ earliest: randInt(14, 16), latest: 18, required: false, done: false });
+  return { waves, arrivals: 0, offer: null };
+}
+function ensureRefugees(s) {
+  s.refugees ??= makeRefugeePlan();
+  s.refugees.waves ??= makeRefugeePlan().waves;
+  s.refugees.arrivals ??= 0;
+  s.refugees.offer ??= null;
+  return s.refugees;
+}
+function cityCanAttractRefugees(s) {
+  return s.generator.on && s.population > 0 && s.hope >= 25 && s.discontent < 85;
+}
+function makeRefugeeOffer() {
+  const count = weightedRefugeeCount();
+  const children = Math.min(count - 1, Math.max(0, Math.round(count * (randInt(10, 30) / 100))));
+  const sick = Math.min(count - children, randInt(0, Math.min(3, count - children)));
+  const foodCost = Math.max(4, Math.round(count * 1.4));
+  return { count, children, sick, foodCost };
+}
+function maybeQueueRefugees(s) {
+  const r = ensureRefugees(s);
+  if (r.offer || s.event === 'refugees' || s.eventQueue.includes('refugees')) return;
+  const wave = r.waves.find(w => !w.done && s.day >= w.earliest && s.day <= w.latest);
+  if (!wave) {
+    for (const w of r.waves) if (!w.done && s.day > w.latest) w.done = true;
+    return;
+  }
+  if (!wave.required && !cityCanAttractRefugees(s)) {
+    if (s.day >= wave.latest) wave.done = true;
+    return;
+  }
+  wave.done = true;
+  r.offer = makeRefugeeOffer();
+  queueEvent(s, 'refugees');
+}
+
 export function newGame() {
   const slots = Array.from({ length: 24 }, () => null);
   slots[0] = { type: 'house', level: 2, workers: 0 };
   slots[1] = { type: 'house', level: 2, workers: 0 };
+  const population = randInt(22, 28);
+  const children = Math.max(3, Math.min(population - 1, Math.round(population * (randInt(15, 25) / 100))));
+  const sick = randInt(0, 2);
   return {
     version: 1, mode: 'naming', playerId: null, playerName: '', day: 1, hour: 6, speed: 0, heatmap: false,
     resources: { coal: 130, wood: 170, steel: 36, food: 78 },
-    population: 30, children: 6, sick: 0, dead: 0, frostbite: 0,
+    initialPopulation: population, population, children, sick, dead: 0, frostbite: 0,
     hope: 68, discontent: 21, lowestHope: 68, highestDiscontent: 21,
     generator: { on: true, manualOff: false, power: 1, range: 1, overdrive: false, stress: 0, outage: 0 },
     slots, researchPoints: 0, researched: [], laws: [], lawDay: 0,
-    event: null, eventQueue: [], eventState: { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 }, journal: ['第 1 天，发电机重新点火。'],
+    event: null, eventQueue: [], eventState: { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 }, refugees: makeRefugeePlan(), journal: ['第 1 天，发电机重新点火。'],
     social: newSocial(), lossReason: null,
     message: '先建煤矿、猎人站与工坊，分配工人。',
   };
@@ -172,7 +218,7 @@ function pay(s, cost) { for (const [key, value] of Object.entries(cost)) s.resou
 function note(s, message) { s.message = message; s.journal.unshift(`第 ${s.day} 天：${message}`); s.journal.length = Math.min(20, s.journal.length); }
 function updateExtremes(s) { s.hope = cap(round(s.hope)); s.discontent = cap(round(s.discontent)); s.lowestHope = Math.min(s.lowestHope, s.hope); s.highestDiscontent = Math.max(s.highestDiscontent, s.discontent); }
 function result(ok, message) { return { ok, message }; }
-const eventPriority = { riotUltimatum: 0, despair: 1, exodus: 2, foodRiot: 3, healthcareProtest: 3, coldHomesProtest: 3, protest: 4, foodProblem: 5, healthcareProblem: 5, healthcareOverload: 5, housingProblem: 5, coldHomes: 5, leavingTalk: 6 };
+const eventPriority = { riotUltimatum: 0, despair: 1, exodus: 2, foodRiot: 3, healthcareProtest: 3, coldHomesProtest: 3, protest: 4, refugees: 5, foodProblem: 5, healthcareProblem: 5, healthcareOverload: 5, housingProblem: 5, coldHomes: 5, leavingTalk: 6 };
 function eventState(s) {
   s.eventState ??= { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 };
   s.eventState.seen ??= [];
@@ -353,12 +399,25 @@ export function act(s, action) {
       const eventId = s.event;
       const choice = EVENTS[eventId]?.choices[action.choice];
       if (!choice) return result(false, '请选择一项决定。');
-      const cost = Object.fromEntries(Object.entries(choice.effect).filter(([key, value]) => key in s.resources && value < 0).map(([key, value]) => [key, -value]));
+      let effect = choice.effect;
+      if (eventId === 'refugees') {
+        const offer = ensureRefugees(s).offer;
+        if (!offer) return result(false, '这批幸存者已经离开。');
+        effect = action.choice === 0
+          ? { population: offer.count, children: offer.children, sick: offer.sick, food: -offer.foodCost, hope: 4 }
+          : { hope: -Math.min(8, 3 + Math.ceil(offer.count / 2)) };
+      }
+      const cost = Object.fromEntries(Object.entries(effect).filter(([key, value]) => key in s.resources && value < 0).map(([key, value]) => [key, -value]));
       if (!canPay(s, cost)) return result(false, '这个决定所需的物资不足。');
-      for (const [key, value] of Object.entries(choice.effect)) {
+      for (const [key, value] of Object.entries(effect)) {
         if (key in s.resources) s.resources[key] = Math.max(0, round(s.resources[key] + value));
-        else if (key === 'population') s.population += value;
+        else if (key === 'population' || key === 'children' || key === 'sick') s[key] = Math.max(0, s[key] + value);
         else s[key] = Math.max(0, s[key] + value);
+      }
+      if (eventId === 'refugees') {
+        const r = ensureRefugees(s);
+        if (action.choice === 0) r.arrivals++;
+        r.offer = null;
       }
       normalizeStaffing(s);
       updateExtremes(s); s.event = null; note(s, `${EVENTS[eventId].title}：${choice.label}。`); syncSocial(s); showNextEvent(s); return result(true, s.message);
@@ -451,7 +510,11 @@ export function advanceHours(s, count = 1) {
     const finalDawn = dawn && s.day === 20;
     if (dawn) {
       daily(s);
-      if (!finalDawn) { s.day++; if (EVENTS[s.day]) queueEvent(s, s.day); }
+      if (!finalDawn) {
+        s.day++;
+        if (EVENTS[s.day]) queueEvent(s, s.day);
+        maybeQueueRefugees(s);
+      }
     }
     tickSocial(s);
     if (s.mode === 'lost') break;
