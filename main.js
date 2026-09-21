@@ -45,6 +45,23 @@ const ICONS = {
   staff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c.6-4 2.5-6 6-6s5.4 2 6 6"/></svg>',
   laws: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
   city: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>',
+  core: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 7v10M7 12h10"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="10" width="10" height="9" rx="1"/><path d="M9 10V8a3 3 0 0 1 6 0v2"/></svg>',
+};
+const BUILDING_ICONS = {
+  house: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 5l8 6v8H4z"/><path d="M9 19v-5h6v5"/></svg>',
+  coal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="m7 6 5-2 5 3 2 6-4 6H8l-3-5z"/><path d="m9 9 6 6M15 8l-6 7"/></svg>',
+  saw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17 17 5"/><path d="m8 16-2-2m5-1-2-2m5-1-2-2m5-1-2-2"/><path d="M4 18h6"/></svg>',
+  steel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-2 8H7z"/><path d="M8 8V6h8v2M9 12h6"/></svg>',
+  hunter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="1.5"/></svg>',
+  greenhouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19h14M7 19V9l5-5 5 5v10"/><path d="M12 19v-8"/><path d="M12 13c-3 0-4-2-4-4 3 0 4 2 4 4Zm0 2c3 0 4-2 4-4-3 0-4 2-4 4Z"/></svg>',
+  clinic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  workshop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/></svg>',
+  storage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14v11H5z"/><path d="M4 5h16v3H4z"/><path d="M10 12h4"/></svg>',
+  tavern: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 6h9v8a4 4 0 0 1-4 4h-1a4 4 0 0 1-4-4z"/><path d="M16 8h2a2 2 0 0 1 0 4h-2M9 21h6"/></svg>',
+  shelter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 5l8 6v8H4z"/><circle cx="12" cy="12" r="2"/><path d="M9 19v-2a3 3 0 0 1 6 0v2"/></svg>',
+  venue: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 6 5-6 11L6 9z"/><path d="M6 9h12"/></svg>'
 };
 const TUTORIAL = [
   {
@@ -120,12 +137,13 @@ function mapHtml() {
     const criticalCold = b && heat <= -25;
     const noCrew = b && maxWorkers > 0 && b.workers === 0;
     const lowCrew = b && maxWorkers > 0 && b.workers > 0 && b.workers < Math.ceil(maxWorkers / 2);
-    const status = criticalCold ? { cls: 'freeze', text: 'COLD' } : noCrew ? { cls: 'idle', text: 'NO CREW' } : lowCrew ? { cls: 'lowcrew', text: 'LOW' } : null;
-    const label = b ? `${def.name}，${heatLabel(heat)}，${b.workers}名工人${status ? `，状态 ${status.text}` : ''}` : `${ringName(ringOf(id))}空槽${locked ? '，尚未解锁' : ''}`;
-    return `<button class="slot ${b ? (heat >= 0 ? 'warm' : 'cold') : 'empty'} ${status ? `has-status ${status.cls}` : ''} ${locked ? 'locked' : ''} ${selected === id && panel === 'slot' ? 'selected' : ''}" style="left:${x}%;top:${y}%" data-slot="${id}" aria-label="${label}" title="${label}"><span>${b ? def.glyph : locked ? '·' : '+'}</span>${b ? `<small>${def.name}</small>` : ''}${status ? `<i class="slot-status">${status.text}</i>` : ''}</button>`;
+    const status = criticalCold ? { cls: 'freeze', text: '严重失温' } : noCrew ? { cls: 'idle', text: '无人工作' } : lowCrew ? { cls: 'lowcrew', text: '人手不足' } : null;
+    const label = b ? `${def.name}，${heatLabel(heat)}，${b.workers}名工人${status ? `，${status.text}` : ''}` : `${ringName(ringOf(id))}空槽${locked ? '，尚未解锁' : ''}`;
+    const icon = b ? BUILDING_ICONS[b.type] : locked ? ICONS.lock : ICONS.plus;
+    return `<button class="slot ${b ? (heat >= 0 ? 'warm' : 'cold') : 'empty'} ${status ? `has-status ${status.cls}` : ''} ${locked ? 'locked' : ''} ${selected === id && panel === 'slot' ? 'selected' : ''}" style="left:${x}%;top:${y}%" data-slot="${id}" aria-label="${label}" title="${label}"><span class="slot-icon">${icon}</span>${b ? `<small>${def.name}</small>` : ''}${status ? '<i class="slot-status-dot" aria-hidden="true"></i>' : ''}</button>`;
   })).join('');
   const generatorState = !state.generator.on ? '<i class="core-state offline">OFFLINE</i>' : state.generator.overdrive ? '<i class="core-state boost">OVERDRIVE</i>' : '';
-  return `<div class="city-map ${state.heatmap ? 'heat' : ''}" role="group" aria-label="三圈城市地图，24个建筑槽"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>${slots}<button class="generator ${!state.generator.on ? 'off' : ''} ${state.generator.overdrive ? 'overdrive' : ''}" data-open="generator" aria-label="发电机，${state.generator.on ? '运行中' : '已熄火'}"><span>♨</span><small>核心炉</small>${generatorState}</button>${state.day >= 17 ? `<div class="stormveil ${state.day === 20 ? 'heavy' : ''}"></div>` : ''}</div>`;
+  return `<div class="city-map ${state.heatmap ? 'heat' : ''}" role="group" aria-label="三圈城市地图，24个建筑槽"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>${slots}<button class="generator ${!state.generator.on ? 'off' : ''} ${state.generator.overdrive ? 'overdrive' : ''}" data-open="generator" aria-label="发电机，${state.generator.on ? '运行中' : '已熄火'}"><span class="core-icon">${ICONS.core}</span><small>核心炉</small>${generatorState}</button>${state.day >= 17 ? `<div class="stormveil ${state.day === 20 ? 'heavy' : ''}"></div>` : ''}</div>`;
 }
 function mapToolsHtml() {
   return `<div class="map-tools" role="group" aria-label="地图工具"><button class="settings-btn" data-act="settings" aria-label="设置" title="设置">${ICONS.settings}</button><button class="heat-btn ${state.heatmap ? 'active' : ''}" data-act="heat" aria-label="${state.heatmap ? '关闭热力图' : '打开热力图'}" title="热力图" aria-pressed="${state.heatmap}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0Z"/><path d="M12 9v8"/></svg></button></div>`;
@@ -133,7 +151,7 @@ function mapToolsHtml() {
 function buildCards() {
   const categories = ['居住','生产','食物','设施','社会'];
   const locked = selected < 0 || ringOf(selected) > state.generator.range;
-  return `<p class="hint">${selected < 0 ? '当前供暖范围内没有空槽。可以升级供暖范围或拆除建筑。' : `当前选中：${ringName(ringOf(selected))} · ${selected + 1} 号槽${locked ? '。请先研究供暖范围。' : ''}。点击地图空槽可切换位置。`}</p>${categories.map(category => `<div class="section-label">${category}</div>${Object.entries(BUILDINGS).filter(([,b]) => b.category === category).map(([id,b]) => `<div class="card"><div class="cardline"><span class="glyph">${b.glyph}</span><div class="card-main"><strong>${b.name}</strong><small>${b.note}</small><small>${costText(b.cost)}</small></div><button data-act="build" data-id="${id}" ${locked || state.slots[selected] || (b.law && !state.laws.includes(b.law)) ? 'disabled' : ''}>建造</button></div></div>`).join('')}`).join('')}`;
+  return `<p class="hint">${selected < 0 ? '当前供暖范围内没有空槽。可以升级供暖范围或拆除建筑。' : `当前选中：${ringName(ringOf(selected))} · ${selected + 1} 号槽${locked ? '。请先研究供暖范围。' : ''}。点击地图空槽可切换位置。`}</p>${categories.map(category => `<div class="section-label">${category}</div>${Object.entries(BUILDINGS).filter(([,b]) => b.category === category).map(([id,b]) => `<div class="card"><div class="cardline"><span class="glyph building-icon">${BUILDING_ICONS[id] || ''}</span><div class="card-main"><strong>${b.name}</strong><small>${b.note}</small><small>${costText(b.cost)}</small></div><button data-act="build" data-id="${id}" ${locked || state.slots[selected] || (b.law && !state.laws.includes(b.law)) ? 'disabled' : ''}>建造</button></div></div>`).join('')}`).join('')}`;
 }
 function slotPanel() {
   const b = state.slots[selected];
