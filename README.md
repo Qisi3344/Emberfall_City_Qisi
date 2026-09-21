@@ -14,10 +14,10 @@ npm run dev
 
 ## 在线访问（GitHub Pages）
 
-仓库推送后，在 GitHub 仓库 Settings → Pages 中选择 `main` 分支 / 根目录即可获得公开地址：
+已从 `main` 分支根目录发布：
 
 ```
-https://riki-aowu.github.io/emberfall-city-twenty-days-below/
+https://qisi3344.github.io/Emberfall_City_Qisi/
 ```
 
 游戏内全部资源引用均为相对路径（`./assets/...`），可直接运行在 Pages 的子路径下。
@@ -43,7 +43,7 @@ https://riki-aowu.github.io/emberfall-city-twenty-days-below/
 
 ## 设置面板
 
-右上角 ⚙ 打开，打开期间游戏时间完全暂停：总音量 / BGM 音量 / 音效音量滑杆、雪花粒子开关、重新开始本局（二次确认）、返回。
+地图左上方“希望”下的 ⚙ 打开，打开期间游戏时间完全暂停：总音量 / BGM 音量 / 音效音量滑杆、雪花粒子开关、重新开始本局（二次确认）、返回。
 
 ## MCP 游戏接口（`mcp-server.mjs`）
 
