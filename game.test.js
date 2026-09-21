@@ -157,3 +157,20 @@ test('unresolved despair can dissolve a small city after 24 hours', () => {
   assert.equal(s.lossReason, 'exodus');
   assert.equal(s.social.rulerStatus, '城市解体');
 });
+
+
+test('leaving intent does not remove workers and staffing recovers after sickness', () => {
+  const s = newGame();
+  start(s);
+  s.social.leavingIntent = 8;
+  assert.equal(availableWorkers(s), 24, '想离城但尚未离城的人仍应属于劳动力');
+
+  assert.equal(act(s, { type: 'build', index: 2, building: 'hunter' }).ok, true);
+  assert.equal(act(s, { type: 'build', index: 3, building: 'clinic' }).ok, true);
+  assert.equal(act(s, { type: 'staff', index: 2, delta: 10 }).ok, true);
+
+  s.sick = 8;
+  assert.equal(act(s, { type: 'staff', index: 2, delta: -10 }).ok, true);
+  assert.ok(availableWorkers(s) > 0);
+  assert.equal(act(s, { type: 'staff', index: 3, delta: 5 }).ok, true, '撤回其他岗位后应能给医务所重新派人');
+});
