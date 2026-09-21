@@ -386,3 +386,17 @@ test('forced labor immediately raises discontent instead of lowering it', () => 
   assert.equal(act(s, { type: 'law', id: 'forcedWork' }).ok, true);
   assert.equal(s.discontent, before + 12);
 });
+
+
+test('stable order ends immediately when an action pushes discontent above fifteen', () => {
+  const s = newGame();
+  start(s);
+  s.discontent = 10;
+  s.social.calmHours = 6;
+  s.social.stableOrder = true;
+
+  assert.equal(act(s, { type: 'law', id: 'longShift' }).ok, true);
+  assert.equal(s.discontent, 16);
+  assert.equal(s.social.stableOrder, false);
+  assert.equal(s.social.calmHours, 0);
+});
