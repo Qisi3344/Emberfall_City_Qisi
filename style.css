@@ -948,7 +948,7 @@
 .nav button:not(.active){background:transparent}
 
 .slot{
-  border-radius:8px;
+  border-radius:50%;
   width:38px;
   height:38px;
   border:1px solid #67777e82;
@@ -964,7 +964,7 @@
   position:absolute;
   inset:3px;
   border:1px solid #9eabb024;
-  border-radius:5px;
+  border-radius:50%;
   pointer-events:none;
 }
 .slot-icon{
@@ -1158,8 +1158,8 @@
 }
 
 @media(max-width:360px){
-  .slot{width:34px;height:34px;border-radius:7px}
-  .slot:before{inset:3px;border-radius:4px}
+  .slot{width:34px;height:34px;border-radius:50%}
+  .slot:before{inset:3px;border-radius:50%}
   .slot-icon svg{width:17px;height:17px}
   .slot small{top:37px;font-size:6px}
   .generator{width:70px;height:70px}
