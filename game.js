@@ -128,9 +128,9 @@ export function eventEffect(s, id, index) {
   if (!d.eventMult) return choice.effect;
   const m = d.eventMult;
   return Object.fromEntries(Object.entries(choice.effect).map(([key, value]) => {
-    if (['coal', 'wood', 'steel', 'food'].includes(key)) return [key, value < 0 ? -Math.ceil(-value * m.resourceCost) : Math.max(1, Math.floor(value * m.resourceGain))];
-    if (key === 'hope') return [key, value < 0 ? -Math.ceil(-value * m.hopeLoss) : Math.max(1, Math.floor(value * m.hopeGain))];
-    if (key === 'discontent') return [key, value > 0 ? Math.ceil(value * m.discontentGain) : -Math.max(1, Math.floor(-value * m.discontentRelief))];
+    if (['coal', 'wood', 'steel', 'food'].includes(key)) return [key, value < 0 ? -Math.ceil(-value * m.resourceCost) : value > 0 ? Math.max(1, Math.floor(value * m.resourceGain)) : 0];
+    if (key === 'hope') return [key, value < 0 ? -Math.ceil(-value * m.hopeLoss) : value > 0 ? Math.max(1, Math.floor(value * m.hopeGain)) : 0];
+    if (key === 'discontent') return [key, value > 0 ? Math.ceil(value * m.discontentGain) : value < 0 ? -Math.max(1, Math.floor(-value * m.discontentRelief)) : 0];
     if (key === 'sick') return [key, value > 0 ? Math.ceil(value * m.sickGain) : value];
     return [key, value];
   }));
