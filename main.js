@@ -148,12 +148,15 @@ function paintIntroTypewriter() {
   const lines = [...app.querySelectorAll('[data-intro-line]')];
   if (!lines.length) return;
   let remaining = introTypingProgress;
+  let cursorPlaced = false;
   lines.forEach((node, index) => {
     const text = INTRO_COPY[index] || '';
     const shown = Math.max(0, Math.min(text.length, remaining));
     node.textContent = text.slice(0, shown);
     remaining -= shown;
-    node.classList.toggle('typing', !introTypingComplete && shown < text.length && remaining <= 0);
+    const typingHere = !introTypingComplete && !cursorPlaced && shown < text.length;
+    node.classList.toggle('typing', typingHere);
+    if (typingHere) cursorPlaced = true;
   });
   const button = app.querySelector('.intro-start');
   if (button) {
