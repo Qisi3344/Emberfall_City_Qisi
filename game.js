@@ -339,6 +339,8 @@ function triggerWorkerStrike(s, stage) {
   const c = ensureRiotState(s);
   const d = difficultyOf(s).riotDisruption;
   const now = absoluteHour(s);
+  const activeBuildingDisruptions = c.riotStrikes.filter(effect => effect.until > now).length + c.riotShutdowns.filter(effect => effect.until > now).length;
+  if (activeBuildingDisruptions >= 2) return false;
   const active = new Set(c.riotStrikes.filter(effect => effect.until > now).map(effect => effect.slot));
   const candidates = s.slots.map((b, slot) => b && b.workers > 0 && RIOT_STRIKE_TYPES.has(b.type) && !active.has(slot) ? slot : null).filter(slot => slot !== null);
   const slot = chooseRiotTarget(s, candidates);
@@ -357,6 +359,7 @@ function triggerRoadBlock(s) {
   const d = difficultyOf(s).riotDisruption;
   const now = absoluteHour(s);
   const active = new Set(c.riotBlocks.filter(effect => effect.until > now).map(effect => effect.sector));
+  if (active.size >= 1) return false;
   let candidates = RIOT_SECTORS.map((sector, index) => ({
     index,
     buildings: sector.slots.filter(slot => !!s.slots[slot]).length,
@@ -374,6 +377,8 @@ function triggerBuildingShutdown(s, stage) {
   const c = ensureRiotState(s);
   const d = difficultyOf(s).riotDisruption;
   const now = absoluteHour(s);
+  const activeBuildingDisruptions = c.riotStrikes.filter(effect => effect.until > now).length + c.riotShutdowns.filter(effect => effect.until > now).length;
+  if (activeBuildingDisruptions >= 2) return false;
   const activeShutdown = new Set(c.riotShutdowns.filter(effect => effect.until > now).map(effect => effect.slot));
   const activeProductive = s.slots.map((b, slot) => b && b.workers > 0 && RIOT_PRODUCTIVE_TYPES.has(b.type) && !activeShutdown.has(slot) ? slot : null).filter(slot => slot !== null);
   const activeCoal = activeProductive.filter(slot => s.slots[slot]?.type === 'coal');
@@ -393,7 +398,8 @@ function triggerBuildingShutdown(s, stage) {
 }
 function hasCalmingVenue(s) {
   const d = difficultyOf(s);
-  return s.slots.some((b, slot) => (b?.type === 'tavern' || b?.type === 'venue') && effectiveRiotWorkers(s, b, slot) > 0 && buildingHeat(s, slot) > d.fatigueHeat);
+  const minimumHeat = d.fatigueHeat ?? -25;
+  return s.slots.some((b, slot) => (b?.type === 'tavern' || b?.type === 'venue') && effectiveRiotWorkers(s, b, slot) > 0 && buildingHeat(s, slot) > minimumHeat);
 }
 function triggerRiotWave(s) {
   const c = ensureRiotState(s);
@@ -887,7 +893,7 @@ function daily(s) {
   normalizeStaffing(s);
   const shelterHope = s.slots.some(b => b?.type === 'shelter') ? (s.laws.includes('apprenticeship') ? 1 : d.shelterHope) : 0;
   s.hope += (housing(s) >= s.population ? d.hopeHousing : d.hopeHomeless) - (missing ? d.hopeHunger : 0) - deaths * d.hopeDeath + shelterHope + lawSum(s, 'dailyHope');
-  s.discontent += (exposed ? d.discontentHomeless : d.discontentHousing) + (missing ? d.discontentHunger : 0) + lawSum(s, 'dailyDiscontent') - lawSum(s, 'longShiftRelief') + (s.social.aftermathHours > 0 ? d.discontentAftermath : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
+  s.discontent += (exposed ? d.discontentHomeless : d.discontentHousing) + (missing ? d.discontentHunger : 0) + lawSum(s, 'dailyDiscontent') - lawSum(s, 'longShiftRelief') + (s.social.aftermathHours > 0 ? d.discontentAftermath : 0);
   s.discontent -= s.slots.reduce((n, b, i) => n + ((b?.type === 'tavern' || b?.type === 'venue') ? Math.min(effectiveRiotWorkers(s, b, i), 3) * riotAccessMult(s, i) : 0), 0);
   if (s.day >= d.fatigueStart && s.discontent >= d.fatigueThreshold && !s.slots.some((b, i) => (b?.type === 'tavern' || b?.type === 'venue') && effectiveRiotWorkers(s, b, i) > 0 && buildingHeat(s, i) > d.fatigueHeat)) s.discontent += d.fatigueChange;
   updateExtremes(s);
@@ -942,7 +948,7 @@ export function advanceHours(s, count = 1) {
         const b = s.slots[i]; if (!b || !b.workers) continue;
         const outside = ['coal', 'saw', 'steel'].includes(b.type);
         if (outside && outdoorProductionMult(s) === 0) continue;
-        const rate = effectiveRiotWorkers(s, b, i) / BUILDINGS[b.type].workers * labor * riotAccessMult(s, i) * (outside ? outdoorProductionMult(s) : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * d.production * lawProduct(s, 'productionMult');
+        const rate = effectiveRiotWorkers(s, b, i) / BUILDINGS[b.type].workers * labor * riotAccessMult(s, i) * (outside ? outdoorProductionMult(s) : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotState === 'warning' ? 0.93 : 1) * d.production * lawProduct(s, 'productionMult');
         const key = { coal: 'coal', saw: 'wood', steel: 'steel', greenhouse: 'food' }[b.type];
         const amount = { coal: 5, saw: 3, steel: 1.8, greenhouse: buildingHeat(s, i) < -25 ? 0 : 2.2 }[b.type] || 0;
         if (key) s.resources[key] = Math.min(storageLimit(s), round(s.resources[key] + amount * rate * b.level * (b.type === 'coal' && s.researched.includes('coalEfficiency') ? 1.3 : 1)));
