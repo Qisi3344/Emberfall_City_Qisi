@@ -50,6 +50,13 @@ let noticeError = false;
 let elapsed = 0;
 let draftName = lastName;
 let nameError = '';
+const INTRO_COPY = [
+  '旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。',
+  '这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。',
+];
+let introTypingTimer = null;
+let introTypingProgress = 0;
+let introTypingComplete = false;
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = value => Number.isInteger(value) ? value : value.toFixed(1);
 const pct = value => Math.max(0, Math.min(100, value));
@@ -129,11 +136,65 @@ function record() {
   state.recorded = true; save();
 }
 function flash(message, error = false) { notice = message; noticeError = error; render(); window.clearTimeout(flash.timer); flash.timer = window.setTimeout(() => { notice = ''; render(); }, 2800); }
+const introTotalLength = () => INTRO_COPY.reduce((sum, line) => sum + line.length, 0);
+function introCharAt(index) {
+  for (const line of INTRO_COPY) {
+    if (index < line.length) return line[index];
+    index -= line.length;
+  }
+  return '';
+}
+function paintIntroTypewriter() {
+  const lines = [...app.querySelectorAll('[data-intro-line]')];
+  if (!lines.length) return;
+  let remaining = introTypingProgress;
+  lines.forEach((node, index) => {
+    const text = INTRO_COPY[index] || '';
+    const shown = Math.max(0, Math.min(text.length, remaining));
+    node.textContent = text.slice(0, shown);
+    remaining -= shown;
+    node.classList.toggle('typing', !introTypingComplete && shown < text.length && remaining <= 0);
+  });
+  const button = app.querySelector('.intro-start');
+  if (button) {
+    button.disabled = !introTypingComplete;
+    button.classList.toggle('ready', introTypingComplete);
+  }
+}
+function finishIntroTypewriter() {
+  window.clearTimeout(introTypingTimer);
+  introTypingProgress = introTotalLength();
+  introTypingComplete = true;
+  paintIntroTypewriter();
+}
+function resetIntroTypewriter() {
+  window.clearTimeout(introTypingTimer);
+  introTypingProgress = 0;
+  introTypingComplete = false;
+}
+function runIntroTypewriter() {
+  if (state.mode !== 'intro') { window.clearTimeout(introTypingTimer); return; }
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { finishIntroTypewriter(); return; }
+  paintIntroTypewriter();
+  if (introTypingComplete) return;
+  window.clearTimeout(introTypingTimer);
+  const step = () => {
+    if (state.mode !== 'intro' || introTypingComplete) return;
+    const current = introCharAt(introTypingProgress);
+    introTypingProgress++;
+    if (introTypingProgress >= introTotalLength()) introTypingComplete = true;
+    paintIntroTypewriter();
+    if (introTypingComplete) return;
+    const delay = /[。！？]/.test(current) ? 260 : /[，、；：]/.test(current) ? 110 : 34;
+    introTypingTimer = window.setTimeout(step, delay);
+  };
+  introTypingTimer = window.setTimeout(step, introTypingProgress ? 34 : 220);
+}
 function dispatch(action) {
   const response = act(state, action);
   if (action.type === 'confirmName') {
     nameError = response.ok ? '' : response.message;
-    if (response.ok) { draftName = state.playerName; localStorage.setItem(LAST_NAME, draftName); save(); }
+    if (response.ok) { draftName = state.playerName; localStorage.setItem(LAST_NAME, draftName); resetIntroTypewriter(); save(); }
     render(); return;
   }
   if (response.ok) { save(); render(); }
@@ -263,7 +324,7 @@ function tutorialHtml() {
 function overlayHtml() {
   if (rankingsOpen) return `<div class="overlay"><div class="report"><div class="eyebrow">LOCAL RECORDS</div><h2>本机排名</h2><p>当前仅保存本机战绩；联网排行榜属于后续版本。</p><div style="max-height:45vh;overflow:auto">${rankingPanel().body}</div><button class="action secondary" data-act="back-ranking" style="margin-top:12px;width:100%">返回结算</button></div></div>`;
   if (state.mode === 'naming') return `<div class="overlay"><div class="intro naming"><img class="naming-logo" src="./assets/logo/logo100.png" alt="余烬之城"><div class="eyebrow">THE LAST HEARTH · 00</div><h1>执政者命名</h1><p>为这次执政留下名字。</p><form id="ruler-form" novalidate><label for="ruler-name">执政者姓名</label><input id="ruler-name" name="ruler-name" type="text" maxlength="24" autocomplete="off" value="${esc(draftName)}" aria-describedby="name-hint${nameError ? ' name-error' : ''}"><small id="name-hint">2～12 个字符，可在开始前更改。</small>${nameError ? `<small id="name-error" class="name-error" role="alert">${esc(nameError)}</small>` : ''}<button class="action" type="submit">确认姓名 · 阅读开场</button></form></div></div>`;
-  if (state.mode === 'intro') return `<div class="overlay"><div class="intro"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p>旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。</p><p class="lead">这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。</p><button class="action" data-act="start">开始执政</button></div></div>`;
+  if (state.mode === 'intro') return `<div class="overlay"><div class="intro intro-story"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p class="intro-type-line" data-intro-line="0"></p><p class="lead intro-type-line" data-intro-line="1"></p><button class="action intro-start" data-act="start" disabled>开始执政</button><small class="intro-skip-hint">点击画面可立即显示全文</small></div></div>`;
   if (state.mode === 'difficulty') return `<div class="overlay"><div class="intro difficulty-select"><div class="eyebrow">SURVIVAL MODE · 02</div><h1>选择难度</h1><p>本局开始后无法更改难度。</p><button class="difficulty-option" data-act="select-difficulty" data-difficulty="mild"><strong>微寒模式</strong><span>推荐初次体验</span><small>资源与天气压力适中，适合熟悉余烬城的生存系统。</small></button><button class="difficulty-option extreme" data-act="select-difficulty" data-difficulty="extreme"><strong>⚠ 极寒模式</strong><span>高压生存</span><small>更少的储备、更快的降温、更严苛的社会与医疗压力。每一个决定都会留下代价。</small><small>最终需至少 15 人存活、炉火运行、没有社会危机倒计时，且风暴中累计断炉不超过 1 小时。</small></button></div></div>`;
   if (state.mode === 'playing' && state.tutorialPromptSeen === false) return `<div class="overlay"><div class="report tutorial-prompt"><div class="eyebrow">SURVIVAL HANDBOOK</div><h2>看教程？</h2><p>城市已进入${difficultyName(state)}模式，时间保持暂停。可以先查看生存手册，也可以直接开始。</p><div class="button-row"><button class="action secondary" data-act="tutorial-choice" data-need="false">不需要</button><button class="action" data-act="tutorial-choice" data-need="true">需要</button></div></div></div>`;
   if (state.event) {
@@ -374,6 +435,7 @@ function render() {
   const body = app.querySelector('.sheet-body'); if (body) body.scrollTop = scroll;
   const mcpPanel = app.querySelector('.mcp-panel'); if (mcpPanel) mcpPanel.scrollTop = mcpScroll;
   audio.observe(state);
+  if (state.mode === 'intro') runIntroTypewriter();
 }
 function advance(count) {
   if (settingsOpen || tutorialOpen || state.tutorialPromptSeen === false) return;
@@ -382,7 +444,9 @@ function advance(count) {
 }
 app.addEventListener('click', event => {
   audio.unlock();
-  const button = event.target.closest('button'); if (!button) return;
+  const button = event.target.closest('button');
+  if (state.mode === 'intro' && !introTypingComplete && !button && event.target.closest('.overlay')) { finishIntroTypewriter(); return; }
+  if (!button) return;
   audio.play(button.dataset.act === 'build' ? 'place' : 'ui');
   if (button.dataset.slot !== undefined) { selected = Number(button.dataset.slot); panel = 'slot'; render(); return; }
   if (button.dataset.lawBranch) { lawBranch = button.dataset.lawBranch; panel = 'laws'; render(); return; }
@@ -437,9 +501,9 @@ app.addEventListener('click', event => {
   if (action === 'settings-restart') {
     if (!restartConfirm) { restartConfirm = true; render(); return; }
     settingsOpen = false; mcpGuideOpen = false; restartConfirm = false; tutorialOpen = false; tutorialStep = 0;
-    state = newGame(); draftName = platform.displayName || localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return;
+    resetIntroTypewriter(); state = newGame(); draftName = platform.displayName || localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return;
   }
-  if (action === 'restart') { tutorialOpen = false; tutorialStep = 0; state = newGame(); draftName = localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return; }
+  if (action === 'restart') { tutorialOpen = false; tutorialStep = 0; resetIntroTypewriter(); state = newGame(); draftName = localStorage.getItem(LAST_NAME) || ''; nameError = ''; panel = null; selected = 2; rankingsOpen = false; elapsed = 0; save(); render(); return; }
   if (action === 'build') dispatch({ type: 'build', index: selected, building: id });
   else if (action === 'staff') dispatch({ type: 'staff', index: Number(button.dataset.index ?? selected), delta: Number(button.dataset.delta) });
   else if (action === 'upgrade' || action === 'demolish') dispatch({ type: action, index: selected });
