@@ -215,11 +215,19 @@ export function newGame() {
   const population = randInt(22, 28);
   const children = Math.max(3, Math.min(population - 1, Math.round(population * (randInt(15, 25) / 100))));
   const sick = randInt(0, 2);
+  const resources = {
+    coal: randInt(120, 145),
+    wood: randInt(150, 185),
+    steel: randInt(30, 42),
+    food: randInt(68, 90),
+  };
+  const hope = randInt(62, 72);
+  const discontent = randInt(16, 26);
   return {
     version: 1, mode: 'naming', playerId: null, playerName: '', day: 1, hour: 6, speed: 0, heatmap: false,
-    resources: { coal: 130, wood: 170, steel: 36, food: 78 },
+    resources,
     initialPopulation: population, population, children, sick, dead: 0, frostbite: 0,
-    hope: 68, discontent: 21, lowestHope: 68, highestDiscontent: 21,
+    hope, discontent, lowestHope: hope, highestDiscontent: discontent,
     generator: { on: true, manualOff: false, power: 1, range: 1, overdrive: false, stress: 0, outage: 0 },
     slots, researchPoints: 0, researched: [], laws: [], lawDay: 0,
     event: null, eventQueue: [], eventState: { seen: [], foodShortageDays: 0, untreatedSickDays: 0, coldHomesDays: 0, homelessDays: 0 }, refugees: makeRefugeePlan(), journal: ['第 1 天，发电机重新点火。'],

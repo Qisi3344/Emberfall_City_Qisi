@@ -425,3 +425,27 @@ test('law costs are paid and strategic reserve expands storage', () => {
   assert.equal(s.resources.wood, before.wood - 20);
   assert.equal(s.resources.steel, before.steel - 8);
 });
+
+
+test('opening resources, hope, and discontent use balanced random ranges', () => {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    const min = newGame();
+    assert.deepEqual(min.resources, { coal: 120, wood: 150, steel: 30, food: 68 });
+    assert.equal(min.hope, 62);
+    assert.equal(min.discontent, 16);
+    assert.equal(min.lowestHope, min.hope);
+    assert.equal(min.highestDiscontent, min.discontent);
+
+    Math.random = () => 0.999999;
+    const max = newGame();
+    assert.deepEqual(max.resources, { coal: 145, wood: 185, steel: 42, food: 90 });
+    assert.equal(max.hope, 72);
+    assert.equal(max.discontent, 26);
+    assert.equal(max.lowestHope, max.hope);
+    assert.equal(max.highestDiscontent, max.discontent);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
