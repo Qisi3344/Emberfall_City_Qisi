@@ -425,3 +425,31 @@ test('law costs are paid and strategic reserve expands storage', () => {
   assert.equal(s.resources.wood, before.wood - 20);
   assert.equal(s.resources.steel, before.steel - 8);
 });
+
+
+test('opening resources, hope, and discontent are randomized within balanced ranges', () => {
+  const seen = {
+    coal: new Set(), wood: new Set(), steel: new Set(), food: new Set(),
+    hope: new Set(), discontent: new Set(),
+  };
+  for (let n = 0; n < 40; n++) {
+    const s = newGame();
+    assert.ok(s.resources.coal >= 120 && s.resources.coal <= 145);
+    assert.ok(s.resources.wood >= 150 && s.resources.wood <= 185);
+    assert.ok(s.resources.steel >= 30 && s.resources.steel <= 42);
+    assert.ok(s.resources.food >= 68 && s.resources.food <= 90);
+    assert.ok(s.hope >= 62 && s.hope <= 72);
+    assert.ok(s.discontent >= 16 && s.discontent <= 26);
+    assert.equal(s.lowestHope, s.hope);
+    assert.equal(s.highestDiscontent, s.discontent);
+    seen.coal.add(s.resources.coal);
+    seen.wood.add(s.resources.wood);
+    seen.steel.add(s.resources.steel);
+    seen.food.add(s.resources.food);
+    seen.hope.add(s.hope);
+    seen.discontent.add(s.discontent);
+  }
+  for (const [key, values] of Object.entries(seen)) {
+    assert.ok(values.size > 1, `${key} should vary across new games`);
+  }
+});
