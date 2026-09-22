@@ -1600,3 +1600,43 @@
 .settings-link:hover{color:#dbe5e7}
 .settings-link.danger-link{color:#b77b70}
 .settings-link.danger-link:hover{color:#e0a195}
+
+
+/* Intro transmission: restrained typewriter reveal */
+.intro-story .intro-type-line{
+  min-height:3.8em;
+  margin-bottom:4px;
+}
+.intro-story .intro-type-line.typing::after{
+  content:"▍";
+  margin-left:2px;
+  color:var(--fire);
+  animation:intro-caret .72s steps(1,end) infinite;
+}
+.intro-story .intro-start{
+  opacity:0;
+  transform:translateY(6px);
+  pointer-events:none;
+  transition:opacity .24s ease,transform .24s ease;
+}
+.intro-story .intro-start.ready{
+  opacity:1;
+  transform:translateY(0);
+  pointer-events:auto;
+}
+.intro-story .intro-skip-hint{
+  display:block;
+  min-height:14px;
+  margin-top:8px;
+  color:#65757c;
+  font-size:9px;
+  letter-spacing:.08em;
+  text-align:center;
+  transition:opacity .2s ease;
+}
+.intro-story:has(.intro-start.ready) .intro-skip-hint{opacity:0}
+@keyframes intro-caret{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){
+  .intro-story .intro-type-line.typing::after{animation:none}
+  .intro-story .intro-start{transition:none}
+}
