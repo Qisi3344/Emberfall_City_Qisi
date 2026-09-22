@@ -102,6 +102,8 @@ test('three refugee offers, event modifiers and law costs stay distinct', () => 
   assert.deepEqual(eventEffect(s, 'refugees', 0), { population: 10, children: 2, sick: 2, food: -18, hope: 3 });
   assert.deepEqual(eventEffect(s, 'foodProblem', 0), { food: -17, hope: 2, discontent: -2 });
   assert.deepEqual(eventEffect(s, 'healthcareProblem', 2), { sick: 3, discontent: 6 });
+  assert.equal(eventEffect(s, 'foodRiot', 1).hope, 1);
+  assert.equal(eventEffect(s, 'healthcareProblem', 1).discontent, -1);
   assert.equal(lawFor(s, 'soup').foodMult, .8);
   assert.equal(lawFor(s, 'soup').discontent, 5);
   assert.deepEqual(lawFor(s, 'strategicReserve').cost, { wood: 24, steel: 10 });
@@ -159,4 +161,28 @@ test('extreme final conditions and score', () => {
   assert.equal(blackout.mode, 'lost'); assert.equal(blackout.lossReason, 'stormOutage');
   const unrest = atFinalDawn(15); unrest.social.riotDeadline = 5; unrest.discontent = 70; advanceHours(unrest, 1);
   assert.equal(unrest.mode, 'lost'); assert.equal(unrest.lossReason, 'socialCrisis');
+});
+
+
+test('extreme homelessness costs 3 hope and severe-hope dawn flight uses the extreme threshold', () => {
+  const homeless = ready('extreme');
+  homeless.day = 1; homeless.hour = 5;
+  homeless.population = 31; homeless.children = 0; homeless.sick = 0;
+  homeless.generator.power = 3; homeless.generator.overdrive = true; homeless.generator.stress = 0;
+  homeless.resources.coal = 1000; homeless.resources.food = 1000;
+  homeless.hope = 50; homeless.discontent = 0; homeless.event = null; homeless.eventQueue = [];
+  advanceHours(homeless, 1);
+  assert.equal(homeless.hope, 47);
+
+  const flight = ready('extreme');
+  flight.day = 1; flight.hour = 5;
+  flight.population = 40; flight.children = 0; flight.sick = 0;
+  flight.slots[0].level = 3; flight.slots[1].level = 3;
+  flight.generator.power = 3; flight.generator.overdrive = true; flight.generator.stress = 0;
+  flight.resources.coal = 1000; flight.resources.food = 1000;
+  flight.hope = 15; flight.discontent = 0; flight.event = null; flight.eventQueue = [];
+  flight.social.lowHopeHours = 3; flight.social.leavingIntent = 10;
+  advanceHours(flight, 1);
+  assert.equal(flight.social.fled, 2);
+  assert.equal(flight.population, 38);
 });
