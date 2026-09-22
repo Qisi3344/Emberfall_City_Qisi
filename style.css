@@ -1454,3 +1454,14 @@
   .law-node>small{font-size:7px}
   .law-node-meta{font-size:6.5px}
 }
+
+
+/* MCP entry is intentionally locked until the public endpoint is ready */
+.settings-panel .mcp-locked:disabled{
+  opacity:.48;
+  border-color:#39474d;
+  background:#151e22;
+  color:#6f7d82;
+  cursor:not-allowed;
+  box-shadow:none;
+}

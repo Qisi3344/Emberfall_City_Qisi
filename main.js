@@ -341,7 +341,7 @@ function settingsHtml() {
   const p = audio.prefs;
   const vol = key => Math.round(p[key] * 100);
   const row = (key, label) => `<label class="set-row"><span>${label}</span><input type="range" min="0" max="100" step="1" value="${vol(key)}" data-vol="${key}" aria-label="${label}"><b data-vol-view="${key}">${vol(key)}</b></label>`;
-  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action secondary" data-act="tutorial-settings">教程 · 生存手册</button><button class="action secondary" data-act="settings-mcp">AI / MCP 接入指南</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
+  return `<div class="overlay settings"><div class="report settings-panel"><div class="eyebrow">SETTINGS</div><h2>设置</h2><div class="set-group">${row('master', '总音量')}${row('bgm', 'BGM 音量')}${row('sfx', '音效音量')}</div><button class="action secondary set-toggle" data-act="toggle-snow">${p.snow ? '雪花粒子 · 开' : '雪花粒子 · 关'}</button><button class="action secondary" data-act="tutorial-settings">教程 · 生存手册</button><button class="action secondary mcp-locked" data-act="settings-mcp" disabled aria-disabled="true" title="暂未开放">AI / MCP 接入 · 暂未开放</button><button class="action danger" data-act="settings-restart">${restartConfirm ? '再点一次确认重新开始' : '重新开始本局'}</button><button class="action secondary" data-act="settings-close">返回</button></div></div>`;
 }
 function render() {
   record();
@@ -389,7 +389,7 @@ app.addEventListener('click', event => {
   if (action === 'back-ranking') { rankingsOpen = false; render(); return; }
   if (action === 'settings') { settingsOpen = !settingsOpen; mcpGuideOpen = false; restartConfirm = false; render(); return; }
   if (action === 'settings-close') { settingsOpen = false; mcpGuideOpen = false; restartConfirm = false; render(); return; }
-  if (action === 'settings-mcp') { mcpGuideOpen = true; mcpFeedback = ''; render(); loadMcpSetup(); return; }
+  if (action === 'settings-mcp') { mcpGuideOpen = false; mcpFeedback = ''; return; }
   if (action === 'mcp-back') { mcpGuideOpen = false; render(); return; }
   if (action === 'mcp-stdio' || action === 'mcp-http') { mcpTransport = action === 'mcp-http' ? 'http' : 'stdio'; mcpCheckStatus = ''; mcpFeedback = ''; render(); return; }
   if (action === 'mcp-json' || action === 'mcp-toml') { mcpFormat = action === 'mcp-json' ? 'json' : 'toml'; mcpFeedback = ''; render(); return; }
