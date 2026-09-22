@@ -758,13 +758,19 @@ export function act(s, action) {
     }
     case 'demolish': {
       if (!b) return result(false, '此处没有建筑。');
-      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法拆除。');
+      {
+        const riot = riotSlotStatus(s, i);
+        if (riot.blocked || riot.strikeAbsent || riot.shutdown) return result(false, '暴乱失序尚未解除，暂时无法拆除该设施。');
+      }
       s.resources.wood = Math.min(storageLimit(s), s.resources.wood + Math.floor((BUILDINGS[b.type].cost.wood || 0) / 3));
       note(s, `拆除了${BUILDINGS[b.type].name}，回收少量木材。`); s.slots[i] = null; return result(true, s.message);
     }
     case 'upgrade': {
       if (!b || b.level >= 3) return result(false, '无法继续升级。');
-      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法升级。');
+      {
+        const riot = riotSlotStatus(s, i);
+        if (riot.blocked || riot.strikeAbsent || riot.shutdown) return result(false, '暴乱失序尚未解除，暂时无法升级该设施。');
+      }
       const cost = { wood: 18 * b.level, steel: 5 * b.level };
       if (!canPay(s, cost)) return result(false, '升级材料不足。');
       pay(s, cost); b.level++; note(s, `${BUILDINGS[b.type].name}升至 ${b.level} 级。`); return result(true, s.message);
@@ -772,7 +778,10 @@ export function act(s, action) {
     case 'staff': {
       normalizeStaffing(s);
       if (!b || !BUILDINGS[b.type].workers || !Number.isInteger(action.delta)) return result(false, '此建筑不需要工人。');
-      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法调度人员。');
+      {
+        const riot = riotSlotStatus(s, i);
+        if (riot.blocked || riot.strikeAbsent || riot.shutdown) return result(false, '暴乱失序尚未解除，当前岗位无法调度。');
+      }
       const next = b.workers + action.delta;
       if (next < 0 || next > BUILDINGS[b.type].workers * b.level || (action.delta > 0 && availableWorkers(s) < action.delta)) return result(false, '没有足够的可用工人。');
       b.workers = next; return result(true, `${BUILDINGS[b.type].name}工人 ${next} 人。`);
