@@ -13,7 +13,7 @@ const SERVER_INSTRUCTIONS = '这是余烬城的独立 MCP 对局，与浏览器�
 
 export const TOOLS = [
   { name: 'get_game_state', description: '获取当前完整可决策状态：资源、人口、温度、希望/不满、发电机、建筑、事件与局势。', inputSchema: { type: 'object', properties: {} } },
-  { name: 'create_ruler', description: '创建执政者并开始新的一局（会覆盖当前对局）。姓名须为 2～12 个字符。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: '执政者姓名，2～12 个字符' } }, required: ['name'] } },
+  { name: 'create_ruler', description: '创建执政者并开始新的一局（会覆盖当前对局）；可选择微寒或极寒，默认微寒。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: '执政者姓名，2～12 个字符' }, difficulty: { type: 'string', enum: ['mild', 'extreme'] } }, required: ['name'] } },
   { name: 'build', description: '在指定槽位建造建筑（需在已解锁供暖环内、资源足够）。', inputSchema: { type: 'object', properties: { index: { type: 'integer', description: '槽位 0-23：0-5 内环，6-13 中环，14-23 外环' }, building: { type: 'string', enum: ['house', 'coal', 'saw', 'steel', 'hunter', 'greenhouse', 'clinic', 'workshop', 'storage', 'tavern', 'shelter', 'venue'] } }, required: ['index', 'building'] } },
   { name: 'upgrade_building', description: '升级指定建筑（最高 3 级）。', inputSchema: { type: 'object', properties: { index: { type: 'integer' } }, required: ['index'] } },
   { name: 'demolish_building', description: '拆除指定建筑，回收少量木材。', inputSchema: { type: 'object', properties: { index: { type: 'integer' } }, required: ['index'] } },
@@ -42,7 +42,7 @@ export function createApi({ ranksPath } = {}) {
   async function recordIfNeeded() {
     if (state.recorded) return;
     state.recorded = true;
-    const entry = { playerId: state.playerId, playerName: state.playerName, score: score(state), survivors: state.population, day: state.day, won: state.mode === 'won', date: new Date().toLocaleDateString('zh-CN') };
+    const entry = { playerId: state.playerId, playerName: state.playerName, difficulty: state.difficulty, score: score(state), survivors: state.population, day: state.day, won: state.mode === 'won', date: new Date().toLocaleDateString('zh-CN') };
     let ranks = [];
     try { ranks = JSON.parse(await readFile(ranksFile, 'utf8')); } catch { /* 首次写入 */ }
     ranks.push(entry);
@@ -52,11 +52,14 @@ export function createApi({ ranksPath } = {}) {
   }
   const handlers = {
     get_game_state() { return gameState(live()); },
-    create_ruler({ name }) {
+    create_ruler({ name, difficulty = 'mild' }) {
       state = newGame();
       const named = act(state, { type: 'confirmName', name, playerId: 'mcp-agent' });
       if (!named.ok) return { ok: false, message: named.message };
       act(state, { type: 'start' });
+      const selected = act(state, { type: 'selectDifficulty', difficulty });
+      if (!selected.ok) return selected;
+      act(state, { type: 'tutorialChoice', needsTutorial: false });
       return { ok: true, message: `执政者 ${state.playerName} 已上任，第 ${state.day} 天开始。` };
     },
     build: ({ index, building }) => apply({ type: 'build', index, building }),
@@ -77,10 +80,10 @@ export function createApi({ ranksPath } = {}) {
     },
     async get_result() {
       const s = live();
-      if (s.mode !== 'won' && s.mode !== 'lost') return { status: 'playing', day: s.day, hour: s.hour, message: '本局尚未结束。20 天后若炉火仍在燃烧即获胜。' };
+      if (s.mode !== 'won' && s.mode !== 'lost') return { status: 'playing', difficulty: s.difficulty, day: s.day, hour: s.hour, message: '本局尚未结束，请查看游戏状态中的难度与胜利条件。' };
       await recordIfNeeded();
       return {
-        status: s.mode, won: s.mode === 'won', lossReason: s.lossReason || null, rulerStatus: s.social.rulerStatus,
+        status: s.mode, difficulty: s.difficulty, won: s.mode === 'won', lossReason: s.lossReason || null, rulerStatus: s.social.rulerStatus,
         score: score(s), survivors: s.population, dead: s.dead, fled: s.social.fled, frostbite: s.frostbite,
         day: s.day, lowestHope: s.lowestHope, highestDiscontent: s.highestDiscontent, finalCoal: s.resources.coal, finalFood: s.resources.food,
         message: s.mode === 'won' ? '风暴散去，炉火仍在燃烧。' : '城市在第 ' + s.day + ' 天止步。',
@@ -89,8 +92,8 @@ export function createApi({ ranksPath } = {}) {
   };
   function gameState(s) {
     return {
-      mode: s.mode, playerId: s.playerId, playerName: s.playerName,
-      day: s.day, hour: s.hour, temperature: weather(s.day),
+      mode: s.mode, difficulty: s.difficulty, playerId: s.playerId, playerName: s.playerName,
+      day: s.day, hour: s.hour, temperature: weather(s.day, s.difficulty),
       resources: { ...s.resources }, storageLimit: 300 + s.slots.filter(b => b?.type === 'storage').length * 200,
       population: { total: s.population, children: s.children, sick: s.sick, available: availableWorkers(s), assigned: assigned(s), housing: housing(s) },
       hope: s.hope, discontent: s.discontent,

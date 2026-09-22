@@ -4,6 +4,8 @@ import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing,
 const start = s => {
   assert.equal(act(s, { type: 'confirmName', name: '测试执政者', playerId: 'test-player-id' }).ok, true);
   assert.equal(act(s, { type: 'start' }).ok, true);
+  assert.equal(act(s, { type: 'selectDifficulty', difficulty: 'mild' }).ok, true);
+  assert.equal(act(s, { type: 'tutorialChoice', needsTutorial: false }).ok, true);
 };
 
 test('naming gates the opening and records a stable identity', () => {
@@ -18,12 +20,15 @@ test('naming gates the opening and records a stable identity', () => {
   assert.equal(s.playerName, '小狼');
   assert.equal(s.playerId, 'test-player-id');
   assert.equal(act(s, { type: 'start' }).ok, true);
+  assert.equal(s.mode, 'difficulty');
+  assert.equal(act(s, { type: 'selectDifficulty', difficulty: 'mild' }).ok, true);
+  assert.equal(s.tutorialPromptSeen, false);
+  assert.equal(act(s, { type: 'tutorialChoice', needsTutorial: false }).ok, true);
   assert.equal(s.mode, 'playing');
 });
 
 test('city decisions, ring unlocks, and a complete 20-day run', () => {
   const s = newGame();
-  s.population = 30; s.initialPopulation = 30; s.children = 6; s.sick = 0;
   const doAction = action => assert.equal(act(s, action).ok, true, JSON.stringify(action));
   const releaseWorkers = index => {
     const count = s.slots[index]?.workers || 0;
@@ -31,6 +36,8 @@ test('city decisions, ring unlocks, and a complete 20-day run', () => {
   };
   const canResearch = id => s.researchPoints >= RESEARCH[id].points && Object.entries(RESEARCH[id].cost).every(([key, value]) => s.resources[key] >= value);
   start(s);
+  s.population = 30; s.initialPopulation = 30; s.children = 6; s.sick = 0;
+  s.resources = { coal: 300, wood: 250, steel: 80, food: 200 };
   doAction({ type: 'power', on: false });
   advanceHours(s, 1);
   assert.equal(s.generator.on, false);
@@ -48,7 +55,10 @@ test('city decisions, ring unlocks, and a complete 20-day run', () => {
   assert.equal(housing(s), 30);
   let unlocked2 = false, unlocked3 = false, sawStaffed = false, huntersRestored = false, houseBuilt = false, clinicBuilt = false, secondMine = false;
   for (let hour = 0; hour < 24 * 21 && s.mode === 'playing'; hour++) {
-    if (s.event) doAction({ type: 'event', choice: s.event === 6 ? 0 : 0 });
+    if (s.event) {
+      const eventId = s.event;
+      assert.ok(EVENTS[eventId].choices.some((_, choice) => act(s, { type: 'event', choice }).ok), `没有可负担的事件选项：${eventId}`);
+    }
     if (s.day >= 3 && !s.laws.includes('soup')) doAction({ type: 'law', id: 'soup' });
     if (!unlocked2 && canResearch('range2')) {
       doAction({ type: 'research', id: 'range2' }); unlocked2 = true;
@@ -57,9 +67,10 @@ test('city decisions, ring unlocks, and a complete 20-day run', () => {
       doAction({ type: 'staff', index: 6, delta: 5 });
     }
     if (unlocked2 && !sawStaffed && s.day >= 6) {
-      doAction({ type: 'staff', index: 5, delta: 5 }); sawStaffed = true;
+      const crew = Math.min(5, availableWorkers(s));
+      if (crew) { doAction({ type: 'staff', index: 5, delta: crew }); sawStaffed = true; }
     }
-    if (sawStaffed && !huntersRestored && s.day >= 6) { doAction({ type: 'staff', index: 3, delta: 3 }); huntersRestored = true; }
+    if (sawStaffed && !huntersRestored && s.day >= 6) { const crew = Math.min(3, availableWorkers(s)); if (crew) { doAction({ type: 'staff', index: 3, delta: crew }); huntersRestored = true; } }
     if (!houseBuilt && s.day >= 6 && s.resources.wood >= 24) { doAction({ type: 'build', index: 7, building: 'house' }); houseBuilt = true; }
     if (!clinicBuilt && s.day >= 10 && s.resources.wood >= 26 && s.resources.steel >= 5) {
       doAction({ type: 'build', index: 9, building: 'clinic' });
@@ -125,6 +136,7 @@ test('simultaneous crises prioritize riot and both can be recovered', () => {
   assert.equal(s.event, 'riotUltimatum');
   assert.equal(s.social.riotDeadline, 48);
   assert.equal(s.social.despairDeadline, 24);
+  s.speed = 1;
   act(s, { type: 'event', choice: 1 });
   assert.equal(s.event, 'despair');
   act(s, { type: 'event', choice: 0 });
@@ -179,7 +191,7 @@ test('leaving intent does not remove workers and staffing recovers after sicknes
   assert.equal(act(s, { type: 'staff', index: 2, delta: 10 }).ok, true);
 
   s.sick = 8;
-  assert.equal(act(s, { type: 'staff', index: 2, delta: -10 }).ok, true);
+  assert.equal(act(s, { type: 'staff', index: 2, delta: -Math.min(s.slots[2].workers, s.population - s.children - s.sick) }).ok, true);
   assert.ok(availableWorkers(s) > 0);
   assert.equal(act(s, { type: 'staff', index: 3, delta: 5 }).ok, true, '撤回其他岗位后应能给医务所重新派人');
 });

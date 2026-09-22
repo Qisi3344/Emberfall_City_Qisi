@@ -1,4 +1,4 @@
-import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score } from './game.js';
+import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score, difficultyOf, difficultyName, lawFor, eventEffect, dailyFoodNeed } from './game.js';
 import { audio } from './audio.js';
 import { mcpClientConfig, mcpHttpConfig } from './mcp-connect.js';
 
@@ -19,6 +19,9 @@ try {
 state.social ??= newSocial();
 state.eventQueue ??= [];
 state.lossReason ??= null;
+state.difficulty ??= 'mild';
+state.tutorialPromptSeen ??= true;
+state.generator.finalStormOutageHours ??= 0;
 if (state.mode === 'intro' && !state.playerName) state.mode = 'naming';
 state.playerName ??= state.mode === 'naming' ? '' : lastName || '旧档执政者';
 state.playerId ??= state.mode === 'naming' ? null : playerId;
@@ -51,6 +54,7 @@ const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const fmt = value => Number.isInteger(value) ? value : value.toFixed(1);
 const pct = value => Math.max(0, Math.min(100, value));
 const resName = { coal: '煤炭', wood: '木材', steel: '钢材', food: '食物' };
+const effectSummary = effect => Object.entries(effect || {}).filter(([, value]) => value).map(([key, value]) => `${{...resName, population: '人口', children: '儿童', sick: '病患', hope: '希望', discontent: '不满'}[key] || key} ${value > 0 ? '+' : '−'}${Math.abs(value)}`).join(' · ');
 const ringName = n => ['','第一环','第二环','第三环'][n];
 const ICONS = {
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92a1.7 1.7 0 0 0-1.08-.68 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.04H3v-4h.92A1.7 1.7 0 0 0 4.6 8.88 1.7 1.7 0 0 0 4.26 7l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08V3h4v.92a1.7 1.7 0 0 0 1.08.68A1.7 1.7 0 0 0 17 4.26l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.39.34.74.6 1l.08.04H21v4h-.92c-.26.26-.48.61-.68.96Z"/></svg>',
@@ -114,11 +118,12 @@ const TUTORIAL = [
     facts: [['希望 ↓', '离城风险'], ['不满 ↑', '抗议 / 暴乱'], ['城市报告', '必须作出决定']]
   }
 ];
+const lossTitles = { exodus: '城市解体', riot: '统治终结', population: '无人守城', survivors: '幸存者不足', socialCrisis: '城市未稳', stormOutage: '风暴断炉', generator: '炉火熄灭' };
 function save() { localStorage.setItem(SAVE, JSON.stringify(state)); }
 function record() {
   if (state.recorded || !['won', 'lost'].includes(state.mode)) return;
   const ranks = JSON.parse(localStorage.getItem(RANKS) || '[]');
-  ranks.push({ playerId: state.playerId, playerName: state.playerName, score: score(state), survivors: state.population, day: state.day, won: state.mode === 'won', date: new Date().toLocaleDateString('zh-CN') });
+  ranks.push({ playerId: state.playerId, playerName: state.playerName, difficulty: state.difficulty, score: score(state), survivors: state.population, day: state.day, won: state.mode === 'won', date: new Date().toLocaleDateString('zh-CN') });
   ranks.sort((a, b) => b.score - a.score);
   localStorage.setItem(RANKS, JSON.stringify(ranks.slice(0, 20)));
   state.recorded = true; save();
@@ -184,7 +189,8 @@ function lawsPanel() {
   const tiers = [...new Set(branchLaws.map(([, law]) => law.tier))].sort((a,b) => a - b);
   const tabs = Object.entries(LAW_BRANCHES).map(([id, meta]) => `<button class="${branch === id ? 'active' : ''}" data-law-branch="${id}"><b>${meta.name}</b><small>${meta.note}</small></button>`).join('');
   const rows = tiers.map(tier => {
-    const nodes = branchLaws.filter(([, law]) => law.tier === tier).map(([id, law]) => {
+    const nodes = branchLaws.filter(([, law]) => law.tier === tier).map(([id]) => {
+      const law = lawFor(state, id);
       const visibility = lawVisibility(state, id);
       if (visibility === 'hidden') return '';
       if (visibility === 'shadow') return `<div class="law-node shadow lane-${law.lane || 'center'}"><span class="law-seal">?</span><strong>未揭示法令</strong><small>签署上级法令后显示</small></div>`;
@@ -208,18 +214,18 @@ function researchPanel() {
 }
 function generatorPanel() {
   const g = state.generator;
-  return { title: '中央发电机', subtitle: g.on ? '运行中 · 城市的最后热源' : '已熄火 · 请补充煤炭', body: `<div class="stat-grid"><div class="stat">功率<b>Lv.${g.power}</b></div><div class="stat">供暖范围<b>${g.range} 环</b></div><div class="stat">煤耗 / 小时<b>${fmt(coalPerHour(state))}</b></div><div class="stat">超载压力<b>${fmt(g.stress)}%</b></div></div><p class="hint" style="margin-top:10px">超载可临时提升供暖。压力达到 100% 会引发停机故障；关闭后压力逐渐下降。</p><div class="button-row"><button class="action ${g.overdrive ? 'danger' : ''}" data-act="overdrive">${g.overdrive ? '关闭超载' : '开启超载'}</button><button class="action secondary" data-act="power">${g.on ? '关闭发电机' : '启动发电机'}</button><button class="action secondary" data-open="research">进入研究</button></div>` };
+  return { title: '中央发电机', subtitle: g.on ? '运行中 · 城市的最后热源' : '已熄火 · 请补充煤炭', body: `<div class="stat-grid"><div class="stat">功率<b>Lv.${g.power}</b></div><div class="stat">供暖范围<b>${g.range} 环</b></div><div class="stat">煤耗 / 小时<b>${fmt(coalPerHour(state))}</b></div><div class="stat">超载压力<b>${fmt(g.stress)}%</b></div></div><p class="hint" style="margin-top:10px">超载每小时压力 +${difficultyOf(state).stressGain}，关闭后每小时 −${difficultyOf(state).stressRecovery}；达到 100% 会停机。连续熄火 ${difficultyOf(state).outageLimit} 小时会失败。</p><div class="button-row"><button class="action ${g.overdrive ? 'danger' : ''}" data-act="overdrive">${g.overdrive ? '关闭超载' : '开启超载'}</button><button class="action secondary" data-act="power">${g.on ? '关闭发电机' : '启动发电机'}</button><button class="action secondary" data-open="research">进入研究</button></div>` };
 }
 function cityPanel() {
   const c = state.social;
   const relief = state.hope <= 20 && c.lastReliefDay !== state.day;
   const concession = c.riotDeadline !== null && c.lastConcessionDay !== state.day;
-  return { title: '城市档案', subtitle: `第 ${state.day} 天 · 距风暴 ${Math.max(0, 20 - state.day)} 天`, body: `<div class="stat-grid"><div class="stat">住房<b>${state.population} / ${housing(state)}</b></div><div class="stat">发电机燃料<b>${fmt(state.resources.coal)} 煤</b></div><div class="stat">离城倾向<b>${fmt(c.leavingIntent)} 人</b></div><div class="stat">已离城<b>${c.fled} 人</b></div></div><div class="section-label">社会局势</div><p class="hint">${c.despairDeadline !== null ? `离城危机剩余 ${c.despairDeadline} 小时；将希望恢复至 15。` : c.exodusState === 'active' ? '逃亡潮：低希望可能在清晨导致居民离城。' : c.exodusState === 'warning' ? '居民正在谈论离开。' : '离城风险暂时可控。'} ${c.riotDeadline !== null ? `暴乱最后通牒剩余 ${c.riotDeadline} 小时；将不满降至 75 以下。` : c.riotState === 'warning' ? '暴乱警告：生产效率下降。' : c.riotState === 'protest' ? '城内发生抗议。' : ''}</p><div class="button-row"><button class="action" data-act="relief" ${relief ? '' : 'disabled'}>发放救济 · 食12 木8</button><button class="action secondary" data-act="concession" ${concession ? '' : 'disabled'}>回应诉求 · 食10 木10</button></div><div class="button-row"><button class="action secondary" data-open="research">研究科技</button><button class="action secondary" data-open="generator">发电机</button></div><div class="section-label">城市纪事</div>${state.journal.slice(0, 8).map(line => `<div class="card"><small>${esc(line)}</small></div>`).join('')}` };
+  return { title: '城市档案', subtitle: `${difficultyName(state)}模式 · 第 ${state.day} 天 · 距风暴 ${Math.max(0, 20 - state.day)} 天`, body: `<div class="stat-grid"><div class="stat">住房<b>${state.population} / ${housing(state)}</b></div><div class="stat">发电机燃料<b>${fmt(state.resources.coal)} 煤</b></div><div class="stat">离城倾向<b>${fmt(c.leavingIntent)} 人</b></div><div class="stat">每日食物需求<b>${fmt(dailyFoodNeed(state))}</b></div></div><div class="section-label">社会局势</div><p class="hint">${c.despairDeadline !== null ? `离城危机剩余 ${c.despairDeadline} 小时；将希望恢复至 15。` : c.exodusState === 'active' ? '逃亡潮：低希望可能在清晨导致居民离城。' : c.exodusState === 'warning' ? '居民正在谈论离开。' : '离城风险暂时可控。'} ${c.riotDeadline !== null ? `暴乱最后通牒剩余 ${c.riotDeadline} 小时；将不满降至 ${difficultyOf(state).riotRecovery} 以下。` : c.riotState === 'warning' ? '暴乱警告：生产效率下降。' : c.riotState === 'protest' ? '城内发生抗议。' : ''}</p><div class="button-row"><button class="action" data-act="relief" ${relief ? '' : 'disabled'}>发放救济 · 食12 木8</button><button class="action secondary" data-act="concession" ${concession ? '' : 'disabled'}>回应诉求 · 食10 木10</button></div><div class="button-row"><button class="action secondary" data-open="research">研究科技</button><button class="action secondary" data-open="generator">发电机</button></div><div class="section-label">城市纪事</div>${state.journal.slice(0, 8).map(line => `<div class="card"><small>${esc(line)}</small></div>`).join('')}` };
 }
 function socialAlertsHtml() {
   if (state.mode !== 'playing') return '';
   const c = state.social, alerts = [];
-  if (c.riotDeadline !== null) alerts.push(`<button class="social-alert riot ${c.riotDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 暴乱最后通牒</b><span>${c.riotDeadline} 小时 · 不满须低于 75</span></button>`);
+  if (c.riotDeadline !== null) alerts.push(`<button class="social-alert riot ${c.riotDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 暴乱最后通牒</b><span>${c.riotDeadline} 小时 · 不满须低于 ${difficultyOf(state).riotRecovery}</span></button>`);
   else if (c.riotState === 'warning' || c.riotState === 'protest') alerts.push(`<button class="social-alert riot" data-open="city"><b>⚠ ${c.riotState === 'warning' ? '暴乱警告' : '居民抗议'}</b><span>查看城市应对</span></button>`);
   if (c.despairDeadline !== null) alerts.push(`<button class="social-alert ${c.despairDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 离城危机</b><span>${c.despairDeadline} 小时 · 希望须达到 15</span></button>`);
   else if (c.exodusState !== 'none') alerts.push(`<button class="social-alert" data-open="city"><b>⚠ ${c.exodusState === 'active' ? '逃亡潮' : '离城传言'}</b><span>离城倾向 ${fmt(c.leavingIntent)} 人</span></button>`);
@@ -227,7 +233,7 @@ function socialAlertsHtml() {
 }
 function rankingPanel() {
   const ranks = JSON.parse(localStorage.getItem(RANKS) || '[]');
-  return { title: '查看排名', subtitle: '本机战绩 · 联网榜单后续开放', body: ranks.length ? ranks.map((r,i) => `<div class="card"><div class="cardline"><strong>#${i + 1} · ${esc(r.playerName || '旧档执政者')}</strong><strong>${r.score} 分</strong></div><small>ID ${esc(r.playerId?.slice(0, 8) || '旧记录')} · ${r.won ? '幸存' : '失败'} · 第 ${r.day} 天 · ${r.survivors} 人幸存 · ${r.date}</small></div>`).join('') : '<p class="hint">暂无本机战绩。</p>' };
+  return { title: '查看排名', subtitle: '本机战绩 · 联网榜单后续开放', body: ranks.length ? ranks.map((r,i) => `<div class="card"><div class="cardline"><strong>#${i + 1} · ${esc(r.playerName || '旧档执政者')}</strong><strong>${r.score} 分</strong></div><small>${difficultyName(r)} · ID ${esc(r.playerId?.slice(0, 8) || '旧记录')} · ${r.won ? '幸存' : '失败'} · 第 ${r.day} 天 · ${r.survivors} 人幸存 · ${r.date}</small></div>`).join('') : '<p class="hint">暂无本机战绩。</p>' };
 }
 function sheetHtml() {
   if (!panel) return '';
@@ -240,45 +246,46 @@ function tutorialHtml() {
   if (!tutorialOpen) return '';
   const page = TUTORIAL[tutorialStep];
   const last = tutorialStep === TUTORIAL.length - 1;
-  const fromIntro = tutorialSource === 'intro';
+  const tutorialText = tutorialStep === 0 && state.difficulty === 'extreme' ? '极寒模式要撑过第 20 天：至少 15 人存活、发电机运行、没有暴乱或离城倒计时，且最终风暴中累计熄火不超过 1 小时。' : page.text;
   return `<div class="overlay tutorial-overlay"><section class="tutorial-card" aria-label="生存教程">
     <div class="tutorial-top"><div><span class="tutorial-code">${page.code}</span><div class="eyebrow">SURVIVAL HANDBOOK</div></div><span class="tutorial-count">${tutorialStep + 1} / ${TUTORIAL.length}</span></div>
     <div class="tutorial-progress">${TUTORIAL.map((_,i) => `<i class="${i <= tutorialStep ? 'done' : ''}"></i>`).join('')}</div>
     <h2>${page.title}</h2>
-    <p>${page.text}</p>
+    <p>${tutorialText}</p>
     <div class="tutorial-facts">${page.facts.map(([a,b]) => `<div><b>${a}</b><span>${b}</span></div>`).join('')}</div>
     <div class="tutorial-actions">
       <button class="action secondary" data-act="tutorial-prev" ${tutorialStep === 0 ? 'disabled' : ''}>上一步</button>
-      ${!last ? '<button class="action" data-act="tutorial-next">下一步</button>' : `<button class="action" data-act="${fromIntro ? 'tutorial-start' : 'tutorial-close'}">${fromIntro ? '开始执政' : '看完了'}</button>`}
+      ${!last ? '<button class="action" data-act="tutorial-next">下一步</button>' : '<button class="action" data-act="tutorial-close">看完了</button>'}
     </div>
-    <button class="tutorial-exit" data-act="tutorial-close">${fromIntro ? '返回开场' : '返回设置'}</button>
+    <button class="tutorial-exit" data-act="tutorial-close">${tutorialSource === 'prompt' ? '返回游戏' : '返回设置'}</button>
   </section></div>`;
 }
 function overlayHtml() {
   if (rankingsOpen) return `<div class="overlay"><div class="report"><div class="eyebrow">LOCAL RECORDS</div><h2>本机排名</h2><p>当前仅保存本机战绩；联网排行榜属于后续版本。</p><div style="max-height:45vh;overflow:auto">${rankingPanel().body}</div><button class="action secondary" data-act="back-ranking" style="margin-top:12px;width:100%">返回结算</button></div></div>`;
   if (state.mode === 'naming') return `<div class="overlay"><div class="intro naming"><img class="naming-logo" src="./assets/logo/logo100.png" alt="余烬之城"><div class="eyebrow">THE LAST HEARTH · 00</div><h1>执政者命名</h1><p>为这次执政留下名字。</p><form id="ruler-form" novalidate><label for="ruler-name">执政者姓名</label><input id="ruler-name" name="ruler-name" type="text" maxlength="24" autocomplete="off" value="${esc(draftName)}" aria-describedby="name-hint${nameError ? ' name-error' : ''}"><small id="name-hint">2～12 个字符，可在开始前更改。</small>${nameError ? `<small id="name-error" class="name-error" role="alert">${esc(nameError)}</small>` : ''}<button class="action" type="submit">确认姓名 · 阅读开场</button></form></div></div>`;
-  if (state.mode === 'intro') return `<div class="overlay"><div class="intro"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p>旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。</p><p class="lead">这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。</p><div class="intro-choice-row"><button class="action" data-act="start">开始执政</button><button class="action secondary" data-act="tutorial-intro">进入教程</button></div></div></div>`;
+  if (state.mode === 'intro') return `<div class="overlay"><div class="intro"><div class="eyebrow">THE LAST HEARTH · 01</div><h1>余烬城</h1><p class="ruler-identity">执政者：${esc(state.playerName)}</p><p>旧世界已经死去。寒潮吞没城市与道路，幸存者终于停在这座蒸汽发电机前。</p><p class="lead">这里没有援军。二十天后，超级暴风雪将抵达。谁得到温暖，谁去工作，由你决定。</p><button class="action" data-act="start">开始执政</button></div></div>`;
+  if (state.mode === 'difficulty') return `<div class="overlay"><div class="intro difficulty-select"><div class="eyebrow">SURVIVAL MODE · 02</div><h1>选择难度</h1><p>本局开始后无法更改难度。</p><button class="difficulty-option" data-act="select-difficulty" data-difficulty="mild"><strong>微寒模式</strong><span>推荐初次体验</span><small>资源与天气压力适中，适合熟悉余烬城的生存系统。</small></button><button class="difficulty-option extreme" data-act="select-difficulty" data-difficulty="extreme"><strong>⚠ 极寒模式</strong><span>高压生存</span><small>更少的储备、更快的降温、更严苛的社会与医疗压力。每一个决定都会留下代价。</small><small>最终需至少 15 人存活、炉火运行、没有社会危机倒计时，且风暴中累计断炉不超过 1 小时。</small></button></div></div>`;
+  if (state.mode === 'playing' && state.tutorialPromptSeen === false) return `<div class="overlay"><div class="report tutorial-prompt"><div class="eyebrow">SURVIVAL HANDBOOK</div><h2>看教程？</h2><p>城市已进入${difficultyName(state)}模式，时间保持暂停。可以先查看生存手册，也可以直接开始。</p><div class="button-row"><button class="action secondary" data-act="tutorial-choice" data-need="false">不需要</button><button class="action" data-act="tutorial-choice" data-need="true">需要</button></div></div></div>`;
   if (state.event) {
     const event = EVENTS[state.event];
     const flight = state.event === 'exodus' && state.social.lastFlight;
     const refugeeOffer = state.event === 'refugees' ? state.refugees?.offer : null;
     const eventText = refugeeOffer
       ? `${refugeeOffer.count} 名幸存者抵达城门，其中 ${refugeeOffer.children} 名儿童、${refugeeOffer.sick} 名病患。他们请求进入余烬城。`
+      : state.event === 'despair' ? `人们不再相信这座城市能撑过下一个夜晚。城门前聚集着带行囊的家庭。你还有 ${difficultyOf(state).despairHours} 小时挽回他们。`
+      : state.event === 'riotUltimatum' ? `人群堵住了通往发电机的道路。你有 ${difficultyOf(state).riotHours} 小时将不满降至 ${difficultyOf(state).riotRecovery} 以下。`
+      : state.event === 20 ? `外部生产停止。发电机煤耗变为 ${difficultyOf(state).stormCoal} 倍。请撑过接下来的二十四小时。`
       : event.text;
     const severeEvents = new Set(['riotUltimatum', 'despair', 'foodRiot', 'healthcareProtest', 'coldHomesProtest', 20]);
     const warningEvents = new Set(['protest', 'exodus', 'foodProblem', 'healthcareProblem', 'healthcareOverload', 'housingProblem', 'coldHomes', 17, 19]);
     const tone = severeEvents.has(state.event) ? 'critical' : warningEvents.has(state.event) ? 'warning' : 'normal';
     const eventCode = typeof state.event === 'number' ? `D${String(state.event).padStart(2,'0')}` : String(state.event).replace(/([a-z])([A-Z])/g, '$1-$2').toUpperCase();
     return `<div class="overlay event-overlay"><div class="report event-report ${tone}"><div class="event-head"><div><span class="event-code">${eventCode}</span><div class="eyebrow">CITY REPORT · DAY ${String(state.day).padStart(2,'0')}</div></div><span class="event-required">DECISION REQUIRED</span></div><h2>${event.title}</h2>${event.image ? `<img class="event-image" src="./assets/events/event-${event.image}.jpg" alt="" width="300" height="169">` : ''}<p class="event-text">${eventText}</p>${flight ? `<p class="flight-loss">离城 ${flight.count} 人 · 食物 −${flight.food} · 木材 −${flight.wood} · 煤炭 −${flight.coal}</p>` : ''}<div class="decision-list">${event.choices.map((choice,i) => {
-      const consequence = refugeeOffer
-        ? (i === 0
-          ? `人口 +${refugeeOffer.count}（儿童 +${refugeeOffer.children}、病患 +${refugeeOffer.sick}），食物 −${refugeeOffer.foodCost}，希望 +4`
-          : `希望 −${Math.min(8, 3 + Math.ceil(refugeeOffer.count / 2))}`)
-        : choice.consequence;
+       const consequence = effectSummary(eventEffect(state, state.event, i)) || choice.consequence;
       return `<button class="choice" data-act="event" data-choice="${i}"><span class="choice-no">0${i + 1}</span><span class="choice-copy"><b>${choice.label}</b><small>${consequence}</small></span><span class="choice-arrow" aria-hidden="true">›</span></button>`;
     }).join('')}</div></div></div>`;
   }
-  if (state.mode === 'won' || state.mode === 'lost') return `<div class="overlay"><div class="ending"><div class="eyebrow">CITY ARCHIVE · FINAL REPORT</div><h1>${state.mode === 'won' ? '黎明仍在' : state.lossReason === 'exodus' ? '城市解体' : state.lossReason === 'riot' ? '统治终结' : state.lossReason === 'population' ? '无人守城' : '炉火熄灭'}</h1><div class="summary"><div>初始人口<b>${state.initialPopulation ?? 30}</b></div><div>剩余人口<b>${state.population}</b></div><div>死亡人数<b>${state.dead}</b></div><div>离城人数<b>${state.social.fled}</b></div><div>冻伤人数<b>${state.frostbite}</b></div><div>最低温度<b>${weather(state.day)}℃</b></div><div>最低希望<b>${state.lowestHope}</b></div><div>最高不满<b>${state.highestDiscontent}</b></div><div>最终煤炭<b>${fmt(state.resources.coal)}</b></div><div>最终得分<b>${score(state)}</b></div></div><p class="chronicle">${state.social.massExodus ? '发生大规模离城。' : ''}${state.social.riotEver ? '曾触发暴乱最后通牒。' : ''}执政者：${esc(state.playerName)}（${state.social.rulerStatus}）。这座城市签署了 ${state.laws.length} 条法令，建起 ${state.slots.filter(Boolean).length} 座建筑。${state.mode === 'won' ? '风暴散去，仍有人守着发电机。' : `城市在第 ${state.day} 天止步。`}</p><button class="action secondary" data-act="ranking">查看排名</button><button class="action" data-act="restart">再来一局</button></div></div>`;
+  if (state.mode === 'won' || state.mode === 'lost') return `<div class="overlay"><div class="ending"><div class="eyebrow">CITY ARCHIVE · FINAL REPORT · ${difficultyName(state)}</div><h1>${state.mode === 'won' ? '黎明仍在' : lossTitles[state.lossReason] || '城市失守'}</h1><div class="summary"><div>难度<b>${difficultyName(state)}</b></div><div>初始人口<b>${state.initialPopulation ?? 30}</b></div><div>剩余人口<b>${state.population}</b></div><div>死亡人数<b>${state.dead}</b></div><div>离城人数<b>${state.social.fled}</b></div><div>冻伤人数<b>${state.frostbite}</b></div><div>最低温度<b>${weather(state.day, state.difficulty)}℃</b></div><div>最低希望<b>${state.lowestHope}</b></div><div>最高不满<b>${state.highestDiscontent}</b></div><div>最终煤炭<b>${fmt(state.resources.coal)}</b></div>${state.difficulty === 'extreme' ? `<div>最终风暴断炉<b>${state.generator.finalStormOutageHours || 0} 小时</b></div>` : ''}<div>最终得分<b>${score(state)}</b></div></div><p class="chronicle">${state.social.massExodus ? '发生大规模离城。' : ''}${state.social.riotEver ? '曾触发暴乱最后通牒。' : ''}执政者：${esc(state.playerName)}（${state.social.rulerStatus}）。这座城市签署了 ${state.laws.length} 条法令，建起 ${state.slots.filter(Boolean).length} 座建筑。${state.mode === 'won' ? '风暴散去，仍有人守着发电机。' : `城市在第 ${state.day} 天止步。`}</p><button class="action secondary" data-act="ranking">查看排名</button><button class="action" data-act="restart">再来一局</button></div></div>`;
   return '';
 }
 function mcpConfig() { return mcpTransport === 'http' ? mcpHttpConfig(mcpHttpUrl) : mcpClientConfig(mcpCommand, mcpServerPath); }
@@ -353,7 +360,7 @@ function render() {
   const phaseClass = state.day >= 17 ? 'late-game' : state.day >= 10 ? 'mid-game' : 'early-game';
   const weatherLabel = state.day === 20 ? '超级风暴' : state.day >= 17 ? '风暴逼近' : isDay ? '雪天' : '雪夜';
   const resources = Object.entries(state.resources).map(([key,value]) => `<div class="resource ${value < (key === 'coal' ? 30 : key === 'food' ? 15 : 10) ? 'low' : ''}"><img src="./assets/resources/${key}.png" alt="" width="26" height="26"><div class="resource-copy"><span>${resName[key]}</span><strong>${fmt(value)}</strong></div></div>`).join('');
-  app.innerHTML = `<main class="app ${phaseClass}"><header class="top"><div class="brand"><span>EMBERFALL CITY / 余烬城</span><strong>20 DAYS BELOW</strong></div><div class="dayline"><div class="day-main"><span class="hud-kicker">DAY</span><strong>${String(state.day).padStart(2,'0')}</strong><small>${state.hour.toString().padStart(2,'0')}:00 · ${weatherLabel}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}"><small>TEMP</small><b>${weather(state.day)}℃</b></div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b><i>住房 ${homes}</i></span><span>可用 <b>${availableWorkers(state)}</b><i class="${state.sick ? 'warn-text' : ''}">病患 ${state.sick}</i>${homeless ? `<i class="danger-text">无家可归 ${homeless}</i>` : ''}</span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space"><img class="city-bg" src="${isDay ? './assets/city-day.png?v=2' : './assets/city-night.png?v=2'}" alt="" aria-hidden="true">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><span>TIME CONTROL</span><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停') : '等待指令'}</small></div><div class="speed-cluster"><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button></div><button class="time-btn" data-act="advance">+6H</button></div><nav class="nav" aria-label="主要导航">${[['build','建造'],['staff','人员'],['laws','法令'],['city','城市']].map(([id,label]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span class="nav-icon">${ICONS[id]}</span><em>${label}</em></button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}${tutorialHtml()}</main>`;
+  app.innerHTML = `<main class="app ${phaseClass}"><header class="top"><div class="brand"><span>EMBERFALL CITY / 余烬城</span><strong>20 DAYS BELOW</strong></div><div class="dayline"><div class="day-main"><span class="hud-kicker">DAY</span><strong>${String(state.day).padStart(2,'0')}</strong><small>${state.hour.toString().padStart(2,'0')}:00 · ${weatherLabel}</small></div><div class="temp ${state.day === 20 ? 'storm' : ''}"><small>TEMP</small><b>${weather(state.day, state.difficulty)}℃</b></div></div><div class="resource-row">${resources}</div><div class="population-line"><span>人口 <b>${state.population}</b><i>住房 ${homes}</i></span><span>可用 <b>${availableWorkers(state)}</b><i class="${state.sick ? 'warn-text' : ''}">病患 ${state.sick}</i>${homeless ? `<i class="danger-text">无家可归 ${homeless}</i>` : ''}</span></div><div class="mood-row"><div class="meter"><span>希望</span><div class="track"><i style="width:${pct(state.hope)}%"></i></div><b>${fmt(state.hope)}</b></div><div class="meter anger"><span>不满</span><div class="track"><i style="width:${pct(state.discontent)}%"></i></div><b>${fmt(state.discontent)}</b></div></div></header><div class="city-space"><img class="city-bg" src="${isDay ? './assets/city-day.png?v=2' : './assets/city-night.png?v=2'}" alt="" aria-hidden="true">${mapHtml()}</div><div class="bottom-controls"><div class="time-box"><span>TIME CONTROL</span><b>${state.hour.toString().padStart(2,'0')}:00</b><small>${state.mode === 'playing' ? (state.speed ? `${state.speed}× 自动推进` : '已暂停') : '等待指令'}</small></div><div class="speed-cluster"><button class="speed-btn ${state.speed === 0 ? 'active' : ''}" data-speed="0" aria-label="暂停">Ⅱ</button><button class="speed-btn ${state.speed === 1 ? 'active' : ''}" data-speed="1">1×</button><button class="speed-btn ${state.speed === 2 ? 'active' : ''}" data-speed="2">2×</button><button class="speed-btn ${state.speed === 3 ? 'active' : ''}" data-speed="3">3×</button></div><button class="time-btn" data-act="advance">+6H</button></div><nav class="nav" aria-label="主要导航">${[['build','建造'],['staff','人员'],['laws','法令'],['city','城市']].map(([id,label]) => `<button class="${panel === id ? 'active' : ''}" data-open="${id}"><span class="nav-icon">${ICONS[id]}</span><em>${label}</em></button>`).join('')}</nav>${sheetHtml()}${notice ? `<div class="notice ${noticeError ? 'error' : ''}" role="status">${esc(notice)}</div>` : ''}${overlayHtml()}${settingsHtml()}${tutorialHtml()}</main>`;
   app.querySelector('.bottom-controls').insertAdjacentHTML('beforebegin', socialAlertsHtml());
   const citySpace = app.querySelector('.city-space');
   citySpace.insertAdjacentHTML('afterbegin', mapToolsHtml());
@@ -369,7 +376,7 @@ function render() {
   audio.observe(state);
 }
 function advance(count) {
-  if (settingsOpen || tutorialOpen) return;
+  if (settingsOpen || tutorialOpen || state.tutorialPromptSeen === false) return;
   const moved = advanceHours(state, count);
   if (moved) { state.speed = state.event || state.mode !== 'playing' ? 0 : state.speed; save(); render(); }
 }
@@ -410,7 +417,14 @@ app.addEventListener('click', event => {
     }).catch(() => { mcpCheckStatus = '检测失败：本地游戏服务不可用。'; if (mcpGuideOpen) render(); });
     return;
   }
-  if (action === 'tutorial-intro') { tutorialSource = 'intro'; tutorialStep = 0; tutorialOpen = true; render(); return; }
+  if (action === 'select-difficulty') { dispatch({ type: 'selectDifficulty', difficulty: button.dataset.difficulty }); return; }
+  if (action === 'tutorial-choice') {
+    const needsTutorial = button.dataset.need === 'true';
+    const response = act(state, { type: 'tutorialChoice', needsTutorial });
+    if (!response.ok) { flash(response.message, true); return; }
+    if (needsTutorial) { tutorialSource = 'prompt'; tutorialStep = 0; tutorialOpen = true; }
+    save(); render(); return;
+  }
   if (action === 'tutorial-settings') { tutorialSource = 'settings'; tutorialStep = 0; settingsOpen = false; tutorialOpen = true; render(); return; }
   if (action === 'tutorial-prev') { tutorialStep = Math.max(0, tutorialStep - 1); render(); return; }
   if (action === 'tutorial-next') { tutorialStep = Math.min(TUTORIAL.length - 1, tutorialStep + 1); render(); return; }
@@ -418,10 +432,6 @@ app.addEventListener('click', event => {
     tutorialOpen = false; tutorialStep = 0;
     if (tutorialSource === 'settings') settingsOpen = true;
     render(); return;
-  }
-  if (action === 'tutorial-start') {
-    tutorialOpen = false; tutorialStep = 0; tutorialSource = 'settings';
-    dispatch({ type: 'start' }); return;
   }
   if (action === 'toggle-snow') { audio.setSnow(!audio.prefs.snow); render(); return; }
   if (action === 'settings-restart') {
@@ -469,12 +479,12 @@ app.addEventListener('submit', event => {
   dispatch({ type: 'confirmName', name: draftName, playerId });
 });
 setInterval(() => {
-  if (settingsOpen || tutorialOpen || state.mode !== 'playing' || !state.speed || state.event) return;
+  if (settingsOpen || tutorialOpen || state.tutorialPromptSeen === false || state.mode !== 'playing' || !state.speed || state.event) return;
   elapsed += 100;
   if (elapsed >= 4000 / state.speed) { elapsed = 0; advance(1); }
 }, 100);
-window.advanceTime = ms => { if (settingsOpen || tutorialOpen || state.mode !== 'playing' || !state.speed) return; elapsed += ms; while (elapsed >= 4000 / state.speed && state.mode === 'playing' && !state.event) { elapsed -= 4000 / state.speed; advance(1); } };
-window.render_game_to_text = () => JSON.stringify({ coordinateSystem: '24 slots: 0-5 inner, 6-13 middle, 14-23 outer; map percentages from top-left', mode: state.mode, playerId: state.playerId, playerName: state.playerName, day: state.day, hour: state.hour, weather: weather(state.day), resources: state.resources, population: state.population, sick: state.sick, hope: state.hope, discontent: state.discontent, social: state.social, lossReason: state.lossReason, generator: state.generator, researchPoints: state.researchPoints, researched: state.researched, laws: state.laws, event: state.event, selected, panel, buildings: state.slots.map((b,i) => b ? { slot: i, ...b } : null).filter(Boolean) });
+window.advanceTime = ms => { if (settingsOpen || tutorialOpen || state.tutorialPromptSeen === false || state.mode !== 'playing' || !state.speed) return; elapsed += ms; while (elapsed >= 4000 / state.speed && state.mode === 'playing' && !state.event) { elapsed -= 4000 / state.speed; advance(1); } };
+window.render_game_to_text = () => JSON.stringify({ coordinateSystem: '24 slots: 0-5 inner, 6-13 middle, 14-23 outer; map percentages from top-left', mode: state.mode, difficulty: state.difficulty, tutorialPromptSeen: state.tutorialPromptSeen, playerId: state.playerId, playerName: state.playerName, day: state.day, hour: state.hour, weather: weather(state.day, state.difficulty), resources: state.resources, population: state.population, sick: state.sick, hope: state.hope, discontent: state.discontent, social: state.social, lossReason: state.lossReason, generator: state.generator, researchPoints: state.researchPoints, researched: state.researched, laws: state.laws, event: state.event, selected, panel, buildings: state.slots.map((b,i) => b ? { slot: i, ...b } : null).filter(Boolean) });
 document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'f' && !event.repeat && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
     if (document.fullscreenElement) document.exitFullscreen(); else app.requestFullscreen?.();

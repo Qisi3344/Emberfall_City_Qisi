@@ -38,6 +38,10 @@ test('mcp tools reuse the human rule engine with no bypass', async () => {
     assert.match((await api.call('assign_workers', { index: 2, delta: 10 })).content[0].text, /"ok": true/);
     assert.match((await api.call('advance_time', { hours: 48 })).content[0].text, /推进了 48 小时/);
     assert.equal(api.gameStateOf().day, 3);
+    await api.call('create_ruler', { name: '极寒智能体', difficulty: 'extreme' });
+    assert.equal(api.gameStateOf().difficulty, 'extreme');
+    assert.equal(api.gameStateOf().temperature, -30);
+    assert.equal(api._state().tutorialPromptSeen, true);
   });
 });
 
