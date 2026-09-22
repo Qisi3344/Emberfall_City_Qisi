@@ -92,6 +92,7 @@ export const DIFFICULTIES = {
     homelessSick: .12, coldSickDivisor: 700, hungerSick: .6, clinicRate: .8, sickDeathLine: .27, sickDeathDivisor: 5, hungerDeathDivisor: 8,
     hopeHousing: 1, hopeHomeless: -2, hopeHunger: 4, hopeDeath: 2, discontentHousing: -1, discontentHomeless: 2, discontentHunger: 5, discontentAftermath: 2, shelterHope: 2,
     lowHope: 20, lowHopeHours: 6, severeHope: 10, leavingSlow: .25, leavingFast: .5, despairHours: 24, protest: 80, warning: 95, riotHours: 48, riotRecovery: 75, martialLawExtension: 24,
+    riotDisruption: { interval: 8, finalInterval: 6, strikeDuration: 4, finalStrikeDuration: 4, strikeRatio: .3, finalStrikeRatio: .4, blockDuration: 4, shutdownDuration: 3, finalShutdownDuration: 3, doubleFinalChance: .3, socialDelayChance: .35 },
     medicalEventMin: 4, medicalEventRatio: .12, medicalProtestRatio: .18, coldEventHeat: -15,
     refugeeWaves: [[5,8],[10,14],[14,18]], refugeeWaveCount: [1,3], allRefugeesRequired: false, refugeeCount: [2,10], refugeeChild: [10,30], refugeeSick: [0,3], refugeeFood: 1.4, refugeeHope: 4, refugeeReject: 8, refugeeRejectBase: 3, refugeeRejectPerPerson: .5,
     outdoorByDay: { 19: .5, 20: 0 }, hunterByDay: { 19: .7, 20: 0 }, hunterBase: 1.8,
@@ -104,6 +105,7 @@ export const DIFFICULTIES = {
     homelessSick: .2, coldSickDivisor: 450, hungerSick: .8, clinicRate: .6, sickDeathLine: .2, sickDeathDivisor: 4, hungerDeathDivisor: 6,
     hopeHousing: 0, hopeHomeless: -3, hopeHunger: 5, hopeDeath: 3, discontentHousing: 0, discontentHomeless: 3, discontentHunger: 6, discontentAftermath: 3, shelterHope: 1,
     lowHope: 30, lowHopeHours: 3, severeHope: 15, leavingSlow: .4, leavingFast: .75, despairHours: 12, protest: 60, warning: 80, riotHours: 24, riotRecovery: 65, martialLawExtension: 12,
+    riotDisruption: { interval: 6, finalInterval: 4, strikeDuration: 5, finalStrikeDuration: 6, strikeRatio: .4, finalStrikeRatio: .5, blockDuration: 6, shutdownDuration: 4, finalShutdownDuration: 5, doubleFinalChance: 1, socialDelayChance: .35 },
     medicalEventMin: 3, medicalEventRatio: .1, medicalProtestRatio: .15, coldEventHeat: -10,
     refugeeWaves: [[4,6],[9,11],[13,15]], refugeeWaveCount: [3,3], allRefugeesRequired: true, refugeeCount: [5,12], refugeeChild: [15,35], refugeeSick: [1,4], refugeeFood: 1.8, refugeeHope: 3, refugeeReject: 12, refugeeRejectBase: 5, refugeeRejectPerPerson: .6,
     outdoorByDay: { 17: .7, 18: .5, 19: .3, 20: 0 }, hunterByDay: { 17: 1.26, 18: .9, 19: 0, 20: 0 }, hunterBase: 1.8,
@@ -232,7 +234,215 @@ const round = v => Math.round(v * 10) / 10;
 const costText = cost => Object.entries(cost).map(([key, value]) => `${{ coal: '煤', wood: '木', steel: '钢', food: '食' }[key]} ${value}`).join(' · ');
 export { costText };
 
-export const newSocial = () => ({ leavingIntent: 0, lowHopeHours: 0, exodusState: 'none', despairDeadline: null, riotState: 'none', riotDeadline: null, aftermathHours: 0, fled: 0, massExodus: false, riotEver: false, rulerStatus: '继续执政', lastFlight: null, lastReliefDay: 0, lastConcessionDay: 0 });
+export const newSocial = () => ({
+  leavingIntent: 0, lowHopeHours: 0, exodusState: 'none', despairDeadline: null,
+  riotState: 'none', riotDeadline: null, riotNextDisruption: null,
+  riotBlocks: [], riotStrikes: [], riotShutdowns: [], riotLastTargets: [], riotLastSector: null, lastRiotNegotiationHour: null,
+  aftermathHours: 0, fled: 0, massExodus: false, riotEver: false, rulerStatus: '继续执政',
+  lastFlight: null, lastReliefDay: 0, lastConcessionDay: 0
+});
+
+const RIOT_SECTORS = [
+  { name: '北部', slots: [0, 6, 13, 14, 23] },
+  { name: '东北部', slots: [1, 7, 15] },
+  { name: '东南部', slots: [2, 8, 16, 17] },
+  { name: '南部', slots: [3, 9, 10, 18, 19] },
+  { name: '西南部', slots: [4, 11, 20] },
+  { name: '西北部', slots: [5, 12, 21, 22] },
+];
+const RIOT_STRIKE_TYPES = new Set(['coal', 'saw', 'steel', 'hunter', 'workshop', 'greenhouse', 'tavern', 'venue']);
+const RIOT_SHUTDOWN_TYPES = new Set(['coal', 'saw', 'steel', 'hunter', 'workshop', 'greenhouse', 'tavern', 'venue']);
+const RIOT_PRODUCTIVE_TYPES = new Set(['coal', 'saw', 'steel', 'hunter', 'workshop', 'greenhouse']);
+const absoluteHour = s => (s.day - 1) * 24 + s.hour;
+
+function ensureRiotState(s) {
+  s.social ??= newSocial();
+  const c = s.social;
+  c.riotNextDisruption ??= null;
+  c.riotBlocks ??= [];
+  c.riotStrikes ??= [];
+  c.riotShutdowns ??= [];
+  c.riotLastTargets ??= [];
+  c.riotLastSector ??= null;
+  c.lastRiotNegotiationHour ??= null;
+  return c;
+}
+function clearExpiredRiotEffects(s) {
+  const c = ensureRiotState(s);
+  const now = absoluteHour(s);
+  c.riotBlocks = c.riotBlocks.filter(effect => effect.until > now);
+  c.riotStrikes = c.riotStrikes.filter(effect => effect.until > now);
+  c.riotShutdowns = c.riotShutdowns.filter(effect => effect.until > now);
+}
+const randomPick = items => items.length ? items[Math.floor(Math.random() * items.length)] : null;
+const sectorForSlot = index => RIOT_SECTORS.findIndex(sector => sector.slots.includes(index));
+
+export function riotStage(s) {
+  const c = ensureRiotState(s);
+  if (c.riotDeadline === null) return 0;
+  const total = difficultyOf(s).riotHours;
+  if (c.riotDeadline > total * 2 / 3) return 1;
+  if (c.riotDeadline > total / 3) return 2;
+  return 3;
+}
+export function riotSlotStatus(s, index) {
+  const c = ensureRiotState(s);
+  const now = absoluteHour(s);
+  const strike = c.riotStrikes.find(effect => effect.slot === index && effect.until > now);
+  const shutdown = c.riotShutdowns.find(effect => effect.slot === index && effect.until > now);
+  const block = c.riotBlocks.find(effect => effect.until > now && RIOT_SECTORS[effect.sector]?.slots.includes(index));
+  return {
+    blocked: !!block,
+    blockRemaining: block ? block.until - now : 0,
+    blockName: block ? RIOT_SECTORS[block.sector]?.name || '城区' : '',
+    strikeAbsent: strike ? strike.absentWorkers : 0,
+    strikeRemaining: strike ? strike.until - now : 0,
+    shutdown: !!shutdown,
+    shutdownRemaining: shutdown ? shutdown.until - now : 0,
+  };
+}
+function effectiveRiotWorkers(s, b, index) {
+  if (!b?.workers) return 0;
+  const status = riotSlotStatus(s, index);
+  if (status.shutdown) return 0;
+  return Math.max(0, b.workers - status.strikeAbsent);
+}
+const riotAccessMult = (s, index) => riotSlotStatus(s, index).blocked ? .7 : 1;
+
+export function riotOverview(s) {
+  const c = ensureRiotState(s);
+  const now = absoluteHour(s);
+  const stage = riotStage(s);
+  const effects = [];
+  for (const block of c.riotBlocks) if (block.until > now) effects.push({ type: 'block', label: `${RIOT_SECTORS[block.sector]?.name || '城区'}道路封锁`, remaining: block.until - now });
+  for (const strike of c.riotStrikes) if (strike.until > now) effects.push({ type: 'strike', slot: strike.slot, label: `${BUILDINGS[s.slots[strike.slot]?.type]?.name || '设施'} · ${strike.absentWorkers}人拒工`, remaining: strike.until - now });
+  for (const shutdown of c.riotShutdowns) if (shutdown.until > now) effects.push({ type: 'shutdown', slot: shutdown.slot, label: `${BUILDINGS[s.slots[shutdown.slot]?.type]?.name || '设施'} · 停摆`, remaining: shutdown.until - now });
+  const cooldown = c.lastRiotNegotiationHour === null ? 0 : Math.max(0, 8 - (now - c.lastRiotNegotiationHour));
+  return {
+    stage,
+    stageLabel: ['', 'I · 抗命', 'II · 封锁', 'III · 失控'][stage] || '余波',
+    effects,
+    nextIn: c.riotDeadline === null || c.riotNextDisruption === null ? null : Math.max(0, c.riotNextDisruption - now),
+    negotiationCooldown: cooldown,
+  };
+}
+function rememberRiotTarget(s, slot) {
+  const c = ensureRiotState(s);
+  c.riotLastTargets = [slot, ...c.riotLastTargets.filter(id => id !== slot)].slice(0, 2);
+}
+function chooseRiotTarget(s, candidates) {
+  const c = ensureRiotState(s);
+  const fresh = candidates.filter(slot => !c.riotLastTargets.includes(slot));
+  return randomPick(fresh.length ? fresh : candidates);
+}
+function triggerWorkerStrike(s, stage) {
+  const c = ensureRiotState(s);
+  const d = difficultyOf(s).riotDisruption;
+  const now = absoluteHour(s);
+  const active = new Set(c.riotStrikes.filter(effect => effect.until > now).map(effect => effect.slot));
+  const candidates = s.slots.map((b, slot) => b && b.workers > 0 && RIOT_STRIKE_TYPES.has(b.type) && !active.has(slot) ? slot : null).filter(slot => slot !== null);
+  const slot = chooseRiotTarget(s, candidates);
+  if (slot === null) return false;
+  const b = s.slots[slot];
+  const ratio = stage === 3 ? d.finalStrikeRatio : d.strikeRatio;
+  const duration = stage === 3 ? d.finalStrikeDuration : d.strikeDuration;
+  const absentWorkers = Math.min(b.workers, Math.max(1, Math.ceil(b.workers * ratio)));
+  c.riotStrikes.push({ slot, absentWorkers, until: now + duration });
+  rememberRiotTarget(s, slot);
+  note(s, `${BUILDINGS[b.type].name}有 ${absentWorkers} 名工人拒绝上工，预计持续 ${duration} 小时。`);
+  return true;
+}
+function triggerRoadBlock(s) {
+  const c = ensureRiotState(s);
+  const d = difficultyOf(s).riotDisruption;
+  const now = absoluteHour(s);
+  const active = new Set(c.riotBlocks.filter(effect => effect.until > now).map(effect => effect.sector));
+  let candidates = RIOT_SECTORS.map((sector, index) => ({
+    index,
+    buildings: sector.slots.filter(slot => !!s.slots[slot]).length,
+  })).filter(item => item.buildings >= 2 && !active.has(item.index)).map(item => item.index);
+  const fresh = candidates.filter(index => index !== c.riotLastSector);
+  if (fresh.length) candidates = fresh;
+  const sector = randomPick(candidates);
+  if (sector === null) return false;
+  c.riotBlocks.push({ sector, until: now + d.blockDuration });
+  c.riotLastSector = sector;
+  note(s, `${RIOT_SECTORS[sector].name}道路被抗议者封锁，施工与调度暂停 ${d.blockDuration} 小时。`);
+  return true;
+}
+function triggerBuildingShutdown(s, stage) {
+  const c = ensureRiotState(s);
+  const d = difficultyOf(s).riotDisruption;
+  const now = absoluteHour(s);
+  const activeShutdown = new Set(c.riotShutdowns.filter(effect => effect.until > now).map(effect => effect.slot));
+  const activeProductive = s.slots.map((b, slot) => b && b.workers > 0 && RIOT_PRODUCTIVE_TYPES.has(b.type) && !activeShutdown.has(slot) ? slot : null).filter(slot => slot !== null);
+  const activeCoal = activeProductive.filter(slot => s.slots[slot]?.type === 'coal');
+  const candidates = s.slots.map((b, slot) => {
+    if (!b || !b.workers || !RIOT_SHUTDOWN_TYPES.has(b.type) || activeShutdown.has(slot)) return null;
+    if (b.type === 'coal' && activeCoal.length <= 1) return null;
+    if (RIOT_PRODUCTIVE_TYPES.has(b.type) && activeProductive.length <= 1) return null;
+    return slot;
+  }).filter(slot => slot !== null);
+  const slot = chooseRiotTarget(s, candidates);
+  if (slot === null) return false;
+  const duration = stage === 3 ? d.finalShutdownDuration : d.shutdownDuration;
+  c.riotShutdowns.push({ slot, until: now + duration });
+  rememberRiotTarget(s, slot);
+  note(s, `${BUILDINGS[s.slots[slot].type].name}被抗议者占据，设施停摆 ${duration} 小时。`);
+  return true;
+}
+function hasCalmingVenue(s) {
+  const d = difficultyOf(s);
+  return s.slots.some((b, slot) => (b?.type === 'tavern' || b?.type === 'venue') && effectiveRiotWorkers(s, b, slot) > 0 && buildingHeat(s, slot) > d.fatigueHeat);
+}
+function triggerRiotWave(s) {
+  const c = ensureRiotState(s);
+  const d = difficultyOf(s).riotDisruption;
+  const now = absoluteHour(s);
+  if (c.riotDeadline === null) return;
+  const stage = riotStage(s);
+  const interval = stage === 3 ? d.finalInterval : d.interval;
+  if (hasCalmingVenue(s) && Math.random() < d.socialDelayChance) {
+    c.riotNextDisruption = now + interval;
+    note(s, '酒馆与会所暂时压住了一波冲突，街头没有进一步升级。');
+    return;
+  }
+  const types = ['strike', 'block', 'shutdown'];
+  const wanted = stage === 1 ? 1 : stage === 3 && Math.random() < d.doubleFinalChance ? 2 : 1;
+  const queue = stage === 1 ? ['strike'] : [...types].sort(() => Math.random() - .5);
+  let triggered = 0;
+  for (const type of queue) {
+    const ok = type === 'strike' ? triggerWorkerStrike(s, stage) : type === 'block' ? triggerRoadBlock(s) : triggerBuildingShutdown(s, stage);
+    if (ok && ++triggered >= wanted) break;
+  }
+  if (!triggered && stage !== 1) triggerWorkerStrike(s, stage);
+  c.riotNextDisruption = now + interval;
+}
+function tickRiotDisruption(s) {
+  const c = ensureRiotState(s);
+  clearExpiredRiotEffects(s);
+  if (c.riotDeadline === null) return;
+  const now = absoluteHour(s);
+  if (c.riotNextDisruption === null) c.riotNextDisruption = now;
+  if (now >= c.riotNextDisruption) triggerRiotWave(s);
+}
+function removeOneRiotEffect(s) {
+  const c = ensureRiotState(s);
+  clearExpiredRiotEffects(s);
+  const choices = [
+    ...c.riotShutdowns.map(effect => ({ kind: 'shutdown', effect })),
+    ...c.riotBlocks.map(effect => ({ kind: 'block', effect })),
+    ...c.riotStrikes.map(effect => ({ kind: 'strike', effect })),
+  ];
+  const chosen = randomPick(choices);
+  if (!chosen) return null;
+  if (chosen.kind === 'shutdown') c.riotShutdowns = c.riotShutdowns.filter(effect => effect !== chosen.effect);
+  if (chosen.kind === 'block') c.riotBlocks = c.riotBlocks.filter(effect => effect !== chosen.effect);
+  if (chosen.kind === 'strike') c.riotStrikes = c.riotStrikes.filter(effect => effect !== chosen.effect);
+  if (chosen.kind === 'block') return `${RIOT_SECTORS[chosen.effect.sector]?.name || '城区'}道路封锁`;
+  const building = BUILDINGS[s.slots[chosen.effect.slot]?.type]?.name || '设施';
+  return chosen.kind === 'shutdown' ? `${building}停摆` : `${building}拒工`;
+}
 
 export function weather(day, difficulty = 'mild') {
   return (DIFFICULTIES[difficulty] || DIFFICULTIES.mild).weather[Math.max(0, Math.min(19, day - 1))];
@@ -423,16 +633,16 @@ function showNextEvent(s, allowPaused = false) {
   s.event = s.eventQueue.shift() ?? null;
 }
 function syncSocial(s) {
-  const c = s.social;
+  const c = ensureRiotState(s);
   const d = difficultyOf(s);
   if (c.riotDeadline !== null && s.discontent < d.riotRecovery) {
-    c.riotDeadline = null; c.aftermathHours = 24; note(s, '居民撤回最后通牒，城中仍留有余波。');
+    c.riotDeadline = null; c.riotNextDisruption = null; c.aftermathHours = 24; note(s, '居民撤回最后通牒，城中仍留有余波。');
   }
   if (c.despairDeadline !== null && s.hope >= 15) {
     c.despairDeadline = null; note(s, '离城的人群暂时放下了行囊。');
   }
   if (s.discontent >= 100 && c.riotDeadline === null && c.aftermathHours === 0) {
-    c.riotDeadline = d.riotHours; c.riotEver = true; queueEvent(s, 'riotUltimatum'); note(s, `城市发出 ${d.riotHours} 小时最后通牒！`);
+    c.riotDeadline = d.riotHours; c.riotNextDisruption = absoluteHour(s); c.riotEver = true; queueEvent(s, 'riotUltimatum'); note(s, `城市发出 ${d.riotHours} 小时最后通牒！`);
   }
   const previousRiot = c.riotState;
   const protestAt = lawMax(s, 'protestThreshold', d.protest);
@@ -470,7 +680,7 @@ function flee(s, count) {
   queueEvent(s, 'exodus');
 }
 function tickSocial(s) {
-  const c = s.social;
+  const c = ensureRiotState(s);
   const d = difficultyOf(s);
   if (c.aftermathHours > 0) c.aftermathHours--;
   if (c.riotDeadline !== null) {
@@ -494,6 +704,7 @@ function tickSocial(s) {
   if (c.lowHopeHours >= d.lowHopeHours) c.leavingIntent = Math.min(s.population, round(c.leavingIntent + (s.hope <= d.severeHope ? d.leavingFast : d.leavingSlow)));
   else if (s.hope >= d.lowHope) c.leavingIntent = Math.max(0, round(c.leavingIntent - 0.5));
   syncSocial(s);
+  tickRiotDisruption(s);
   if (s.hour === 6 && s.hope > 0 && s.hope <= d.severeHope && c.leavingIntent >= 1) {
     const fraction = Math.min(0.15, 0.05 + (d.severeHope - s.hope) / 100 + (s.resources.food === 0 ? 0.02 : 0) + (housing(s) < s.population ? 0.02 : 0));
     flee(s, Math.min(Math.floor(c.leavingIntent), Math.ceil(s.population * fraction)));
@@ -532,6 +743,7 @@ export function act(s, action) {
     case 'build': {
       const def = BUILDINGS[action.building];
       if (!Number.isInteger(i) || i < 0 || i >= 24 || b || !def) return result(false, '无法在此建造。');
+      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法施工。');
       if (ringOf(i) > s.generator.range) return result(false, '请先研究供暖范围。');
       if (def.law && !s.laws.includes(def.law)) return result(false, '需要先签署对应法令。');
       if (!canPay(s, def.cost)) return result(false, '材料不足。');
@@ -540,11 +752,13 @@ export function act(s, action) {
     }
     case 'demolish': {
       if (!b) return result(false, '此处没有建筑。');
+      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法拆除。');
       s.resources.wood = Math.min(storageLimit(s), s.resources.wood + Math.floor((BUILDINGS[b.type].cost.wood || 0) / 3));
       note(s, `拆除了${BUILDINGS[b.type].name}，回收少量木材。`); s.slots[i] = null; return result(true, s.message);
     }
     case 'upgrade': {
       if (!b || b.level >= 3) return result(false, '无法继续升级。');
+      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法升级。');
       const cost = { wood: 18 * b.level, steel: 5 * b.level };
       if (!canPay(s, cost)) return result(false, '升级材料不足。');
       pay(s, cost); b.level++; note(s, `${BUILDINGS[b.type].name}升至 ${b.level} 级。`); return result(true, s.message);
@@ -552,6 +766,7 @@ export function act(s, action) {
     case 'staff': {
       normalizeStaffing(s);
       if (!b || !BUILDINGS[b.type].workers || !Number.isInteger(action.delta)) return result(false, '此建筑不需要工人。');
+      if (riotSlotStatus(s, i).blocked) return result(false, '道路被抗议者封锁，暂时无法调度人员。');
       const next = b.workers + action.delta;
       if (next < 0 || next > BUILDINGS[b.type].workers * b.level || (action.delta > 0 && availableWorkers(s) < action.delta)) return result(false, '没有足够的可用工人。');
       b.workers = next; return result(true, `${BUILDINGS[b.type].name}工人 ${next} 人。`);
@@ -575,7 +790,12 @@ export function act(s, action) {
       if (law.cost && !canPay(s, law.cost)) return result(false, '签署该法令所需物资不足。');
       if (law.cost) pay(s, law.cost);
       s.laws.push(action.id); s.lawDay = s.day; s.hope += law.hope || 0; s.discontent += law.discontent || 0;
-      if (action.id === 'martialLaw' && s.social.riotDeadline !== null) s.social.riotDeadline += difficultyOf(s).martialLawExtension;
+      if (action.id === 'martialLaw' && s.social.riotDeadline !== null) {
+        const c = ensureRiotState(s);
+        s.social.riotDeadline += difficultyOf(s).martialLawExtension;
+        c.riotBlocks = [];
+        c.riotStrikes = c.riotStrikes.map(effect => ({ ...effect, until: effect.until + 2 }));
+      }
       updateExtremes(s);
       note(s, `签署法令：${law.name}。`); syncSocial(s); return result(true, s.message);
     }
@@ -592,6 +812,21 @@ export function act(s, action) {
       if (!canPay(s, cost)) return result(false, '让步所需食物或木材不足。');
       pay(s, cost); s.social.lastConcessionDay = s.day; s.discontent -= 8; s.hope += 2; updateExtremes(s);
       note(s, '向抗议人群作出让步。'); syncSocial(s); return result(true, s.message);
+    }
+    case 'riot-negotiate': {
+      const c = ensureRiotState(s);
+      clearExpiredRiotEffects(s);
+      if (c.riotDeadline === null) return result(false, '当前没有暴乱最后通牒。');
+      const now = absoluteHour(s);
+      if (c.lastRiotNegotiationHour !== null && now - c.lastRiotNegotiationHour < 8) return result(false, `代表团还需要 ${8 - (now - c.lastRiotNegotiationHour)} 小时才能再次谈判。`);
+      if (!c.riotBlocks.length && !c.riotStrikes.length && !c.riotShutdowns.length) return result(false, '当前没有可以解除的失序状态。');
+      const cost = { food: 8 };
+      if (!canPay(s, cost)) return result(false, '谈判需要 8 食物作为临时补给。');
+      pay(s, cost);
+      const resolved = removeOneRiotEffect(s);
+      c.lastRiotNegotiationHour = now;
+      note(s, `代表团谈判成功：${resolved || '一处冲突'}已经解除。`);
+      return result(true, s.message);
     }
     case 'power': {
       if (action.on === false || (action.on === undefined && s.generator.on)) { s.generator.on = false; s.generator.manualOff = true; }
@@ -631,7 +866,7 @@ function daily(s) {
   const d = difficultyOf(s);
   const labor = Math.min(1, workforce(s) / Math.max(1, assigned(s)));
   const productionMult = lawProduct(s, 'productionMult');
-  const workers = s.slots.filter(b => b?.type === 'hunter').reduce((n, b) => n + b.workers, 0) * labor;
+  const workers = s.slots.reduce((n, b, i) => n + (b?.type === 'hunter' ? effectiveRiotWorkers(s, b, i) * riotAccessMult(s, i) : 0), 0) * labor;
   if (s.day < 20) s.resources.food = Math.min(storageLimit(s), round(s.resources.food + workers * hunterFoodPerWorker(s) * d.production * productionMult));
   const need = dailyFoodNeed(s);
   const missing = Math.max(0, need - s.resources.food);
@@ -643,7 +878,7 @@ function daily(s) {
   const cold = Math.max(0, Math.ceil(s.population * Math.max(0, -avgHeat - 3) / d.coldSickDivisor * lawProduct(s, 'coldSickMult')));
   const lawColdSick = avgHeat < -20 ? lawSum(s, 'dailySickCold') : 0;
   const newSick = Math.ceil(exposed * d.homelessSick) + cold + Math.ceil(missing * d.hungerSick) + lawSum(s, 'dailySick') + lawColdSick;
-  const clinicWorkers = s.slots.filter(b => b?.type === 'clinic').reduce((n, b) => n + b.workers, 0);
+  const clinicWorkers = s.slots.reduce((n, b, i) => n + (b?.type === 'clinic' ? effectiveRiotWorkers(s, b, i) * riotAccessMult(s, i) : 0), 0);
   const treated = Math.min(s.sick + newSick, Math.floor(clinicWorkers * d.clinicRate * lawProduct(s, 'clinicMult')));
   s.sick = Math.min(s.population, s.sick + newSick - treated);
   s.frostbite += cold;
@@ -653,8 +888,8 @@ function daily(s) {
   const shelterHope = s.slots.some(b => b?.type === 'shelter') ? (s.laws.includes('apprenticeship') ? 1 : d.shelterHope) : 0;
   s.hope += (housing(s) >= s.population ? d.hopeHousing : d.hopeHomeless) - (missing ? d.hopeHunger : 0) - deaths * d.hopeDeath + shelterHope + lawSum(s, 'dailyHope');
   s.discontent += (exposed ? d.discontentHomeless : d.discontentHousing) + (missing ? d.discontentHunger : 0) + lawSum(s, 'dailyDiscontent') - lawSum(s, 'longShiftRelief') + (s.social.aftermathHours > 0 ? d.discontentAftermath : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
-  s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
-  if (s.day >= d.fatigueStart && s.discontent >= d.fatigueThreshold && !s.slots.some((b, i) => (b?.type === 'tavern' || b?.type === 'venue') && b.workers > 0 && buildingHeat(s, i) > d.fatigueHeat)) s.discontent += d.fatigueChange;
+  s.discontent -= s.slots.reduce((n, b, i) => n + ((b?.type === 'tavern' || b?.type === 'venue') ? Math.min(effectiveRiotWorkers(s, b, i), 3) * riotAccessMult(s, i) : 0), 0);
+  if (s.day >= d.fatigueStart && s.discontent >= d.fatigueThreshold && !s.slots.some((b, i) => (b?.type === 'tavern' || b?.type === 'venue') && effectiveRiotWorkers(s, b, i) > 0 && buildingHeat(s, i) > d.fatigueHeat)) s.discontent += d.fatigueChange;
   updateExtremes(s);
 
   // 条件事件：像《冰汽时代》一样，让城市当前状态自己生成问题，
@@ -707,7 +942,7 @@ export function advanceHours(s, count = 1) {
         const b = s.slots[i]; if (!b || !b.workers) continue;
         const outside = ['coal', 'saw', 'steel'].includes(b.type);
         if (outside && outdoorProductionMult(s) === 0) continue;
-        const rate = b.workers / BUILDINGS[b.type].workers * labor * (outside ? outdoorProductionMult(s) : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * d.production * lawProduct(s, 'productionMult');
+        const rate = effectiveRiotWorkers(s, b, i) / BUILDINGS[b.type].workers * labor * riotAccessMult(s, i) * (outside ? outdoorProductionMult(s) : 1) * (outside && buildingHeat(s, i) < -35 ? 0.7 : 1) * (s.social.riotDeadline !== null ? 0.85 : s.social.riotState === 'warning' ? 0.93 : 1) * d.production * lawProduct(s, 'productionMult');
         const key = { coal: 'coal', saw: 'wood', steel: 'steel', greenhouse: 'food' }[b.type];
         const amount = { coal: 5, saw: 3, steel: 1.8, greenhouse: buildingHeat(s, i) < -25 ? 0 : 2.2 }[b.type] || 0;
         if (key) s.resources[key] = Math.min(storageLimit(s), round(s.resources[key] + amount * rate * b.level * (b.type === 'coal' && s.researched.includes('coalEfficiency') ? 1.3 : 1)));
