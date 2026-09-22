@@ -90,7 +90,7 @@ export const DIFFICULTIES = {
     opening: { population: [22,28], childRatio: [15,25], minChildren: 3, sick: [0,2], coal: [120,145], wood: [150,185], steel: [30,42], food: [68,90], hope: [62,72], discontent: [16,26] },
     foodNeed: .3, production: 1, coal: 1, rangeCoal: [0,1,1,1], stormCoal: 2, stormOverdrive: false, overdriveBurn: .3, stressGain: 2.5, stressRecovery: 2, stressAfterFailure: 55, outageLimit: 12,
     homelessSick: .12, coldSickDivisor: 700, hungerSick: .6, clinicRate: .8, sickDeathLine: .27, sickDeathDivisor: 5, hungerDeathDivisor: 8,
-    hopeHousing: 1, hopeHunger: 4, hopeDeath: 2, discontentHousing: -1, discontentHomeless: 2, discontentHunger: 5, discontentAftermath: 2, shelterHope: 2,
+    hopeHousing: 1, hopeHomeless: -2, hopeHunger: 4, hopeDeath: 2, discontentHousing: -1, discontentHomeless: 2, discontentHunger: 5, discontentAftermath: 2, shelterHope: 2,
     lowHope: 20, lowHopeHours: 6, severeHope: 10, leavingSlow: .25, leavingFast: .5, despairHours: 24, protest: 80, warning: 95, riotHours: 48, riotRecovery: 75, martialLawExtension: 24,
     medicalEventMin: 4, medicalEventRatio: .12, medicalProtestRatio: .18, coldEventHeat: -15,
     refugeeWaves: [[5,8],[10,14],[14,18]], refugeeWaveCount: [1,3], allRefugeesRequired: false, refugeeCount: [2,10], refugeeChild: [10,30], refugeeSick: [0,3], refugeeFood: 1.4, refugeeHope: 4, refugeeReject: 8, refugeeRejectBase: 3, refugeeRejectPerPerson: .5,
@@ -102,7 +102,7 @@ export const DIFFICULTIES = {
     opening: { population: [28,32], childRatio: [18,28], minChildren: 4, sick: [2,4], coal: [85,110], wood: [110,140], steel: [20,30], food: [45,60], hope: [48,58], discontent: [30,40] },
     foodNeed: .36, production: .85, coal: 1.2, rangeCoal: [0,1,1.35,1.7], stormCoal: 2.25, stormOverdrive: true, overdriveBurn: .4, stressGain: 5, stressRecovery: 1, stressAfterFailure: 60, outageLimit: 4,
     homelessSick: .2, coldSickDivisor: 450, hungerSick: .8, clinicRate: .6, sickDeathLine: .2, sickDeathDivisor: 4, hungerDeathDivisor: 6,
-    hopeHousing: 0, hopeHunger: 5, hopeDeath: 3, discontentHousing: 0, discontentHomeless: 3, discontentHunger: 6, discontentAftermath: 3, shelterHope: 1,
+    hopeHousing: 0, hopeHomeless: -3, hopeHunger: 5, hopeDeath: 3, discontentHousing: 0, discontentHomeless: 3, discontentHunger: 6, discontentAftermath: 3, shelterHope: 1,
     lowHope: 30, lowHopeHours: 3, severeHope: 15, leavingSlow: .4, leavingFast: .75, despairHours: 12, protest: 60, warning: 80, riotHours: 24, riotRecovery: 65, martialLawExtension: 12,
     medicalEventMin: 3, medicalEventRatio: .1, medicalProtestRatio: .15, coldEventHeat: -10,
     refugeeWaves: [[4,6],[9,11],[13,15]], refugeeWaveCount: [3,3], allRefugeesRequired: true, refugeeCount: [5,12], refugeeChild: [15,35], refugeeSick: [1,4], refugeeFood: 1.8, refugeeHope: 3, refugeeReject: 12, refugeeRejectBase: 5, refugeeRejectPerPerson: .6,
@@ -128,9 +128,9 @@ export function eventEffect(s, id, index) {
   if (!d.eventMult) return choice.effect;
   const m = d.eventMult;
   return Object.fromEntries(Object.entries(choice.effect).map(([key, value]) => {
-    if (['coal', 'wood', 'steel', 'food'].includes(key)) return [key, value < 0 ? -Math.ceil(-value * m.resourceCost) : Math.floor(value * m.resourceGain)];
-    if (key === 'hope') return [key, value < 0 ? -Math.ceil(-value * m.hopeLoss) : Math.floor(value * m.hopeGain)];
-    if (key === 'discontent') return [key, value > 0 ? Math.ceil(value * m.discontentGain) : -Math.floor(-value * m.discontentRelief)];
+    if (['coal', 'wood', 'steel', 'food'].includes(key)) return [key, value < 0 ? -Math.ceil(-value * m.resourceCost) : Math.max(1, Math.floor(value * m.resourceGain))];
+    if (key === 'hope') return [key, value < 0 ? -Math.ceil(-value * m.hopeLoss) : Math.max(1, Math.floor(value * m.hopeGain))];
+    if (key === 'discontent') return [key, value > 0 ? Math.ceil(value * m.discontentGain) : -Math.max(1, Math.floor(-value * m.discontentRelief))];
     if (key === 'sick') return [key, value > 0 ? Math.ceil(value * m.sickGain) : value];
     return [key, value];
   }));
@@ -495,7 +495,7 @@ function tickSocial(s) {
   else if (s.hope >= d.lowHope) c.leavingIntent = Math.max(0, round(c.leavingIntent - 0.5));
   syncSocial(s);
   if (s.hour === 6 && s.hope > 0 && s.hope <= d.severeHope && c.leavingIntent >= 1) {
-    const fraction = Math.min(0.15, 0.05 + (10 - s.hope) / 100 + (s.resources.food === 0 ? 0.02 : 0) + (housing(s) < s.population ? 0.02 : 0));
+    const fraction = Math.min(0.15, 0.05 + (d.severeHope - s.hope) / 100 + (s.resources.food === 0 ? 0.02 : 0) + (housing(s) < s.population ? 0.02 : 0));
     flee(s, Math.min(Math.floor(c.leavingIntent), Math.ceil(s.population * fraction)));
   }
 }
@@ -651,7 +651,7 @@ function daily(s) {
   s.sick -= deaths; s.population -= deaths; s.dead += deaths;
   normalizeStaffing(s);
   const shelterHope = s.slots.some(b => b?.type === 'shelter') ? (s.laws.includes('apprenticeship') ? 1 : d.shelterHope) : 0;
-  s.hope += (housing(s) >= s.population ? d.hopeHousing : -2) - (missing ? d.hopeHunger : 0) - deaths * d.hopeDeath + shelterHope + lawSum(s, 'dailyHope');
+  s.hope += (housing(s) >= s.population ? d.hopeHousing : d.hopeHomeless) - (missing ? d.hopeHunger : 0) - deaths * d.hopeDeath + shelterHope + lawSum(s, 'dailyHope');
   s.discontent += (exposed ? d.discontentHomeless : d.discontentHousing) + (missing ? d.discontentHunger : 0) + lawSum(s, 'dailyDiscontent') - lawSum(s, 'longShiftRelief') + (s.social.aftermathHours > 0 ? d.discontentAftermath : 0) + (s.social.riotDeadline !== null && s.laws.includes('longShift') ? 3 : 0);
   s.discontent -= s.slots.filter(b => b?.type === 'tavern' || b?.type === 'venue').reduce((n, b) => n + Math.min(b.workers, 3), 0);
   if (s.day >= d.fatigueStart && s.discontent >= d.fatigueThreshold && !s.slots.some((b, i) => (b?.type === 'tavern' || b?.type === 'venue') && b.workers > 0 && buildingHeat(s, i) > d.fatigueHeat)) s.discontent += d.fatigueChange;
