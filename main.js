@@ -1,4 +1,4 @@
-import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score, difficultyOf, difficultyName, lawFor, eventEffect, dailyFoodNeed } from './game.js';
+import { BUILDINGS, RESEARCH, LAW_BRANCHES, LAWS, EVENTS, newGame, newSocial, act, advanceHours, weather, ringOf, housing, workforce, availableWorkers, assigned, buildingHeat, heatLabel, coalPerHour, costText, lawState, lawVisibility, score, difficultyOf, difficultyName, lawFor, eventEffect, dailyFoodNeed, riotOverview, riotSlotStatus } from './game.js';
 import { audio } from './audio.js';
 import { mcpClientConfig, mcpHttpConfig } from './mcp-connect.js';
 
@@ -219,10 +219,17 @@ function mapHtml() {
     const criticalCold = b && heat <= -25;
     const noCrew = b && maxWorkers > 0 && b.workers === 0;
     const lowCrew = b && maxWorkers > 0 && b.workers > 0 && b.workers < Math.ceil(maxWorkers / 2);
-    const status = criticalCold ? { cls: 'freeze', text: '严重失温' } : noCrew ? { cls: 'idle', text: '无人工作' } : lowCrew ? { cls: 'lowcrew', text: '人手不足' } : null;
-    const label = b ? `${def.name}，${heatLabel(heat)}，${b.workers}名工人${status ? `，${status.text}` : ''}` : `${ringName(ringOf(id))}空槽${locked ? '，尚未解锁' : ''}`;
+    const riot = riotSlotStatus(state, id);
+    const riotClasses = [riot.blocked && 'riot-blocked', riot.strikeAbsent && 'riot-strike', riot.shutdown && 'riot-shutdown'].filter(Boolean).join(' ');
+    const status = riot.shutdown ? { cls: 'riot-shutdown', text: `停摆 ${riot.shutdownRemaining}h` }
+      : riot.strikeAbsent ? { cls: 'riot-strike', text: `${riot.strikeAbsent}人拒工 · ${riot.strikeRemaining}h` }
+      : riot.blocked ? { cls: 'riot-blocked', text: `道路封锁 · ${riot.blockRemaining}h` }
+      : criticalCold ? { cls: 'freeze', text: '严重失温' }
+      : noCrew ? { cls: 'idle', text: '无人工作' }
+      : lowCrew ? { cls: 'lowcrew', text: '人手不足' } : null;
+    const label = b ? `${def.name}，${heatLabel(heat)}，${b.workers}名工人${status ? `，${status.text}` : ''}` : `${ringName(ringOf(id))}空槽${locked ? '，尚未解锁' : ''}${riot.blocked ? `，${riot.blockName}道路封锁` : ''}`;
     const icon = b ? BUILDING_ICONS[b.type] : locked ? ICONS.lock : ICONS.plus;
-    return `<button class="slot ${b ? (heat >= 0 ? 'warm' : 'cold') : 'empty'} ${status ? `has-status ${status.cls}` : ''} ${locked ? 'locked' : ''} ${selected === id && panel === 'slot' ? 'selected' : ''}" style="left:${x}%;top:${y}%" data-slot="${id}" aria-label="${label}" title="${label}"><span class="slot-icon">${icon}</span>${b ? `<small>${def.name}</small>` : ''}${status ? '<i class="slot-status-dot" aria-hidden="true"></i>' : ''}</button>`;
+    return `<button class="slot ${b ? (heat >= 0 ? 'warm' : 'cold') : 'empty'} ${riotClasses} ${status ? `has-status ${status.cls}` : ''} ${locked ? 'locked' : ''} ${selected === id && panel === 'slot' ? 'selected' : ''}" style="left:${x}%;top:${y}%" data-slot="${id}" aria-label="${label}" title="${label}"><span class="slot-icon">${icon}</span>${b ? `<small>${def.name}</small>` : ''}${status ? '<i class="slot-status-dot" aria-hidden="true"></i>' : ''}</button>`;
   })).join('');
   const generatorState = !state.generator.on ? '<i class="core-state offline">OFFLINE</i>' : state.generator.overdrive ? '<i class="core-state boost">OVERDRIVE</i>' : '';
   return `<div class="city-map ${state.heatmap ? 'heat' : ''} range-${state.generator.range}" role="group" aria-label="三圈城市地图，24个建筑槽"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>${slots}<button class="generator ${!state.generator.on ? 'off' : ''} ${state.generator.overdrive ? 'overdrive' : ''}" data-open="generator" aria-label="发电机，${state.generator.on ? '运行中' : '已熄火'}"><span class="core-icon">${ICONS.core}</span><small>核心炉</small>${generatorState}</button>${state.day >= 17 ? `<div class="stormveil ${state.day === 20 ? 'heavy' : ''}"></div>` : ''}</div>`;
@@ -233,7 +240,11 @@ function mapToolsHtml() {
 function buildCards() {
   const categories = ['居住','生产','食物','设施','社会'];
   const locked = selected < 0 || ringOf(selected) > state.generator.range;
-  return `<p class="hint">${selected < 0 ? '当前供暖范围内没有空槽。可以升级供暖范围或拆除建筑。' : `当前选中：${ringName(ringOf(selected))} · ${selected + 1} 号槽${locked ? '。请先研究供暖范围。' : ''}。点击地图空槽可切换位置。`}</p>${categories.map(category => `<div class="section-label">${category}</div>${Object.entries(BUILDINGS).filter(([,b]) => b.category === category).map(([id,b]) => `<div class="card"><div class="cardline"><span class="glyph building-icon">${BUILDING_ICONS[id] || ''}</span><div class="card-main"><strong>${b.name}</strong><small>${b.note}</small><small>${costText(b.cost)}</small></div><button data-act="build" data-id="${id}" ${locked || state.slots[selected] || (b.law && !state.laws.includes(b.law)) ? 'disabled' : ''}>建造</button></div></div>`).join('')}`).join('')}`;
+  const roadBlocked = selected >= 0 && riotSlotStatus(state, selected).blocked;
+  const locationHint = selected < 0 ? '当前供暖范围内没有空槽。可以升级供暖范围或拆除建筑。'
+    : roadBlocked ? `当前选中：${ringName(ringOf(selected))} · ${selected + 1} 号槽。道路正被抗议者封锁，暂时无法施工。`
+    : `当前选中：${ringName(ringOf(selected))} · ${selected + 1} 号槽${locked ? '。请先研究供暖范围。' : ''}。点击地图空槽可切换位置。`;
+  return `<p class="hint">${locationHint}</p>${categories.map(category => `<div class="section-label">${category}</div>${Object.entries(BUILDINGS).filter(([,b]) => b.category === category).map(([id,b]) => `<div class="card"><div class="cardline"><span class="glyph building-icon">${BUILDING_ICONS[id] || ''}</span><div class="card-main"><strong>${b.name}</strong><small>${b.note}</small><small>${costText(b.cost)}</small></div><button data-act="build" data-id="${id}" ${locked || roadBlocked || state.slots[selected] || (b.law && !state.laws.includes(b.law)) ? 'disabled' : ''}>建造</button></div></div>`).join('')}`).join('')}`;
 }
 function slotPanel() {
   const b = state.slots[selected];
@@ -241,11 +252,20 @@ function slotPanel() {
   const def = BUILDINGS[b.type];
   const heat = buildingHeat(state, selected);
   const upgradeCost = b.level < 3 ? { wood: 18 * b.level, steel: 5 * b.level } : null;
-  return { title: def.name, subtitle: `${ringName(ringOf(selected))} · Lv.${b.level}`, body: `<div class="stat-grid"><div class="stat">建筑温度<b>${heatLabel(heat)} ${heat}℃</b></div><div class="stat">工人<b>${b.workers} / ${def.workers * b.level}</b></div></div><p class="hint" style="margin-top:10px">${def.note}</p>${def.workers ? `<div class="card"><div class="cardline"><div class="card-main"><strong>分配工人</strong><small>可用 ${availableWorkers(state)} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-delta="-1" aria-label="减少工人">−</button><b>${b.workers}</b><button data-act="staff" data-delta="1" aria-label="增加工人">+</button></div></div></div>` : ''}<div class="button-row"><button class="action" data-act="upgrade" ${upgradeCost ? '' : 'disabled'}>升级 ${upgradeCost ? costText(upgradeCost) : '已满级'}</button><button class="action danger" data-act="demolish">拆除建筑</button></div>` };
+  const riot = riotSlotStatus(state, selected);
+  const riotNote = riot.shutdown ? `<p class="riot-inline danger">工人占据设施 · 停摆剩余 ${riot.shutdownRemaining} 小时</p>`
+    : riot.strikeAbsent ? `<p class="riot-inline">拒绝上工 ${riot.strikeAbsent} 人 · 剩余 ${riot.strikeRemaining} 小时</p>`
+    : riot.blocked ? `<p class="riot-inline">道路封锁 · 剩余 ${riot.blockRemaining} 小时，无法施工或调度</p>` : '';
+  const staffDisabled = riot.blocked ? 'disabled' : '';
+  return { title: def.name, subtitle: `${ringName(ringOf(selected))} · Lv.${b.level}`, body: `<div class="stat-grid"><div class="stat">建筑温度<b>${heatLabel(heat)} ${heat}℃</b></div><div class="stat">工人<b>${b.workers} / ${def.workers * b.level}</b></div></div>${riotNote}<p class="hint" style="margin-top:10px">${def.note}</p>${def.workers ? `<div class="card"><div class="cardline"><div class="card-main"><strong>分配工人</strong><small>可用 ${availableWorkers(state)} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-delta="-1" aria-label="减少工人" ${staffDisabled}>−</button><b>${b.workers}</b><button data-act="staff" data-delta="1" aria-label="增加工人" ${staffDisabled}>+</button></div></div></div>` : ''}<div class="button-row"><button class="action" data-act="upgrade" ${upgradeCost && !riot.blocked ? '' : 'disabled'}>升级 ${upgradeCost ? costText(upgradeCost) : '已满级'}</button><button class="action danger" data-act="demolish" ${riot.blocked ? 'disabled' : ''}>拆除建筑</button></div>` };
 }
 function staffPanel() {
   const list = state.slots.map((b, i) => b && BUILDINGS[b.type].workers ? { ...b, i } : null).filter(Boolean);
-  return { title: '人员调度', subtitle: `可用 ${availableWorkers(state)} / 健康劳动力 ${workforce(state)} / 已分配 ${assigned(state)}`, body: `<div class="stat-grid"><div class="stat">总人口<b>${state.population}</b></div><div class="stat">健康劳动力<b>${workforce(state)}</b></div><div class="stat">儿童<b>${state.children}</b></div><div class="stat">病患<b>${state.sick}</b></div></div><div class="section-label">工作岗位</div>${list.length ? list.map(b => `<div class="card"><div class="cardline"><div class="card-main"><strong>${BUILDINGS[b.type].name}</strong><small>${ringName(ringOf(b.i))} · ${b.workers}/${BUILDINGS[b.type].workers * b.level} 人</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-index="${b.i}" data-delta="-1" aria-label="减少${BUILDINGS[b.type].name}工人">−</button><button data-act="staff" data-index="${b.i}" data-delta="1" aria-label="增加${BUILDINGS[b.type].name}工人">+</button></div></div></div>`).join('') : '<p class="hint">先建造生产或服务建筑，才能分配工人。</p>'}` };
+  return { title: '人员调度', subtitle: `可用 ${availableWorkers(state)} / 健康劳动力 ${workforce(state)} / 已分配 ${assigned(state)}`, body: `<div class="stat-grid"><div class="stat">总人口<b>${state.population}</b></div><div class="stat">健康劳动力<b>${workforce(state)}</b></div><div class="stat">儿童<b>${state.children}</b></div><div class="stat">病患<b>${state.sick}</b></div></div><div class="section-label">工作岗位</div>${list.length ? list.map(b => {
+    const riot = riotSlotStatus(state, b.i);
+    const riotText = riot.shutdown ? ` · 停摆 ${riot.shutdownRemaining}h` : riot.strikeAbsent ? ` · ${riot.strikeAbsent}人拒工 ${riot.strikeRemaining}h` : riot.blocked ? ` · 道路封锁 ${riot.blockRemaining}h` : '';
+    return `<div class="card ${riot.shutdown || riot.strikeAbsent || riot.blocked ? 'riot-row' : ''}"><div class="cardline"><div class="card-main"><strong>${BUILDINGS[b.type].name}</strong><small>${ringName(ringOf(b.i))} · ${b.workers}/${BUILDINGS[b.type].workers * b.level} 人${riotText}</small></div><div class="staff-control"><button class="secondary" data-act="staff" data-index="${b.i}" data-delta="-1" aria-label="减少${BUILDINGS[b.type].name}工人" ${riot.blocked ? 'disabled' : ''}>−</button><button data-act="staff" data-index="${b.i}" data-delta="1" aria-label="增加${BUILDINGS[b.type].name}工人" ${riot.blocked ? 'disabled' : ''}>+</button></div></div></div>`;
+  }).join('') : '<p class="hint">先建造生产或服务建筑，才能分配工人。</p>'}` };
 }
 function lawsPanel() {
   const branch = LAW_BRANCHES[lawBranch] ? lawBranch : 'survival';
@@ -302,16 +322,34 @@ function generatorPanel() {
   const g = state.generator;
   return { title: '中央发电机', subtitle: g.on ? '运行中 · 城市的最后热源' : '已熄火 · 请补充煤炭', body: `<div class="stat-grid"><div class="stat">功率<b>Lv.${g.power}</b></div><div class="stat">供暖范围<b>${g.range} 环</b></div><div class="stat">煤耗 / 小时<b>${fmt(coalPerHour(state))}</b></div><div class="stat">超载压力<b>${fmt(g.stress)}%</b></div></div><p class="hint" style="margin-top:10px">超载每小时压力 +${difficultyOf(state).stressGain}，关闭后每小时 −${difficultyOf(state).stressRecovery}；达到 100% 会停机。连续熄火 ${difficultyOf(state).outageLimit} 小时会失败。</p><div class="button-row"><button class="action ${g.overdrive ? 'danger' : ''}" data-act="overdrive">${g.overdrive ? '关闭超载' : '开启超载'}</button><button class="action secondary" data-act="power">${g.on ? '关闭发电机' : '启动发电机'}</button><button class="action secondary" data-open="research">进入研究</button></div>` };
 }
+function riotPanelHtml() {
+  const view = riotOverview(state);
+  const active = state.social.riotDeadline !== null;
+  if (!active && !view.effects.length) return '';
+  const canNegotiate = active && view.effects.length > 0 && view.negotiationCooldown === 0 && state.resources.food >= 8;
+  const negotiateText = view.negotiationCooldown > 0 ? `代表团整备中 · ${view.negotiationCooldown}h`
+    : !view.effects.length ? '暂无可谈判冲突'
+    : state.resources.food < 8 ? '派代表谈判 · 需要食物 8'
+    : '派代表谈判 · 食物 8';
+  const effects = view.effects.length ? view.effects.map(effect => `<div class="riot-effect ${effect.type}"><span>${esc(effect.label)}</span><b>${effect.remaining}h</b></div>`).join('') : '<p class="riot-clear">当前没有正在持续的封锁或停摆。</p>';
+  return `<section class="riot-dossier stage-${view.stage}" aria-label="暴乱局势">
+    <div class="riot-dossier-head"><div><span>RIOT CONTROL</span><strong>${view.stageLabel}</strong></div><b>${active ? `最后通牒 ${state.social.riotDeadline}h` : '暴乱余波'}</b></div>
+    ${active ? `<div class="riot-next">${view.nextIn === 0 ? '新的失序波次即将发生' : view.nextIn === null ? '' : `下一次失序风险约 ${view.nextIn} 小时`}</div>` : ''}
+    <div class="riot-effect-list">${effects}</div>
+    ${active ? `<button class="action secondary riot-negotiate" data-act="riot-negotiate" ${canNegotiate ? '' : 'disabled'}>${negotiateText}</button><small class="riot-rule">每 8 小时可谈判一次；谈判只解除一项失序，不直接降低不满。</small>` : ''}
+  </section>`;
+}
 function cityPanel() {
   const c = state.social;
   const relief = state.hope <= 20 && c.lastReliefDay !== state.day;
   const concession = c.riotDeadline !== null && c.lastConcessionDay !== state.day;
-  return { title: '城市档案', subtitle: `${difficultyName(state)}模式 · 第 ${state.day} 天 · 距风暴 ${Math.max(0, 20 - state.day)} 天`, body: `<div class="stat-grid"><div class="stat">住房<b>${state.population} / ${housing(state)}</b></div><div class="stat">发电机燃料<b>${fmt(state.resources.coal)} 煤</b></div><div class="stat">离城倾向<b>${fmt(c.leavingIntent)} 人</b></div><div class="stat">每日食物需求<b>${fmt(dailyFoodNeed(state))}</b></div></div><div class="section-label">社会局势</div><p class="hint">${c.despairDeadline !== null ? `离城危机剩余 ${c.despairDeadline} 小时；将希望恢复至 15。` : c.exodusState === 'active' ? '逃亡潮：低希望可能在清晨导致居民离城。' : c.exodusState === 'warning' ? '居民正在谈论离开。' : '离城风险暂时可控。'} ${c.riotDeadline !== null ? `暴乱最后通牒剩余 ${c.riotDeadline} 小时；将不满降至 ${difficultyOf(state).riotRecovery} 以下。` : c.riotState === 'warning' ? '暴乱警告：生产效率下降。' : c.riotState === 'protest' ? '城内发生抗议。' : ''}</p><div class="button-row"><button class="action" data-act="relief" ${relief ? '' : 'disabled'}>发放救济 · 食12 木8</button><button class="action secondary" data-act="concession" ${concession ? '' : 'disabled'}>回应诉求 · 食10 木10</button></div><div class="button-row"><button class="action secondary" data-open="research">研究科技</button><button class="action secondary" data-open="generator">发电机</button></div><div class="section-label">城市纪事</div>${state.journal.slice(0, 8).map(line => `<div class="card"><small>${esc(line)}</small></div>`).join('')}` };
+  return { title: '城市档案', subtitle: `${difficultyName(state)}模式 · 第 ${state.day} 天 · 距风暴 ${Math.max(0, 20 - state.day)} 天`, body: `<div class="stat-grid"><div class="stat">住房<b>${state.population} / ${housing(state)}</b></div><div class="stat">发电机燃料<b>${fmt(state.resources.coal)} 煤</b></div><div class="stat">离城倾向<b>${fmt(c.leavingIntent)} 人</b></div><div class="stat">每日食物需求<b>${fmt(dailyFoodNeed(state))}</b></div></div>${riotPanelHtml()}<div class="section-label">社会局势</div><p class="hint">${c.despairDeadline !== null ? `离城危机剩余 ${c.despairDeadline} 小时；将希望恢复至 15。` : c.exodusState === 'active' ? '逃亡潮：低希望可能在清晨导致居民离城。' : c.exodusState === 'warning' ? '居民正在谈论离开。' : '离城风险暂时可控。'} ${c.riotDeadline !== null ? `暴乱最后通牒剩余 ${c.riotDeadline} 小时；将不满降至 ${difficultyOf(state).riotRecovery} 以下。` : c.riotState === 'warning' ? '暴乱警告：生产效率下降。' : c.riotState === 'protest' ? '城内发生抗议。' : ''}</p><div class="button-row"><button class="action" data-act="relief" ${relief ? '' : 'disabled'}>发放救济 · 食12 木8</button><button class="action secondary" data-act="concession" ${concession ? '' : 'disabled'}>回应诉求 · 食10 木10</button></div><div class="button-row"><button class="action secondary" data-open="research">研究科技</button><button class="action secondary" data-open="generator">发电机</button></div><div class="section-label">城市纪事</div>${state.journal.slice(0, 8).map(line => `<div class="card"><small>${esc(line)}</small></div>`).join('')}` };
 }
 function socialAlertsHtml() {
   if (state.mode !== 'playing') return '';
   const c = state.social, alerts = [];
-  if (c.riotDeadline !== null) alerts.push(`<button class="social-alert riot ${c.riotDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 暴乱最后通牒</b><span>${c.riotDeadline} 小时 · 不满须低于 ${difficultyOf(state).riotRecovery}</span></button>`);
+  const riot = riotOverview(state);
+  if (c.riotDeadline !== null) alerts.push(`<button class="social-alert riot ${c.riotDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 暴乱最后通牒 · ${riot.stageLabel}</b><span>${c.riotDeadline} 小时 · 失序 ${riot.effects.length} 项</span></button>`);
   else if (c.riotState === 'warning' || c.riotState === 'protest') alerts.push(`<button class="social-alert riot" data-open="city"><b>⚠ ${c.riotState === 'warning' ? '暴乱警告' : '居民抗议'}</b><span>查看城市应对</span></button>`);
   if (c.despairDeadline !== null) alerts.push(`<button class="social-alert ${c.despairDeadline <= 6 ? 'urgent' : ''}" data-open="city"><b>⚠ 离城危机</b><span>${c.despairDeadline} 小时 · 希望须达到 15</span></button>`);
   else if (c.exodusState !== 'none') alerts.push(`<button class="social-alert" data-open="city"><b>⚠ ${c.exodusState === 'active' ? '逃亡潮' : '离城传言'}</b><span>离城倾向 ${fmt(c.leavingIntent)} 人</span></button>`);
@@ -534,7 +572,7 @@ app.addEventListener('click', event => {
   else if (action === 'upgrade' || action === 'demolish') dispatch({ type: action, index: selected });
   else if (action === 'research' || action === 'law') dispatch({ type: action, id });
   else if (action === 'event') dispatch({ type: 'event', choice: Number(button.dataset.choice) });
-  else if (action === 'start' || action === 'power' || action === 'overdrive' || action === 'relief' || action === 'concession') dispatch({ type: action });
+  else if (action === 'start' || action === 'power' || action === 'overdrive' || action === 'relief' || action === 'concession' || action === 'riot-negotiate') dispatch({ type: action });
 });
 app.addEventListener('input', event => {
   const field = event.target.dataset?.mcpField;
