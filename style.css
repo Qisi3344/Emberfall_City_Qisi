@@ -2242,3 +2242,79 @@
   .riot-dossier-head>b{font-size:12px}
   .riot-effect{font-size:8px}
 }
+
+
+/* Building status reminders — readable on the map without turning every slot into a warning box */
+.slot.has-status .slot-status-dot{display:none}
+.slot-alert{
+  position:absolute;
+  top:-8px;
+  right:-8px;
+  z-index:3;
+  min-width:18px;
+  height:18px;
+  padding:0 4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #6d5f4d;
+  border-radius:9px;
+  background:#211d18f2;
+  color:#d8bf9e;
+  box-shadow:0 2px 6px #0009;
+  font-size:8px;
+  font-weight:700;
+  line-height:1;
+  letter-spacing:0;
+  pointer-events:none;
+}
+.slot.idle .slot-alert{
+  border-color:#9a7549;
+  background:#2b2218f4;
+  color:#efc27e;
+}
+.slot.lowcrew .slot-alert{
+  border-color:#756b59;
+  background:#25231ef4;
+  color:#c9b993;
+}
+.slot.homecold .slot-alert{
+  border-color:#688b9b;
+  background:#17272ef4;
+  color:#b9dce7;
+  box-shadow:0 2px 6px #0009,0 0 8px #6d9eb04d;
+}
+.slot.freeze .slot-alert{
+  border-color:#7aa8ba;
+  background:#152b34f4;
+  color:#d3edf5;
+  box-shadow:0 2px 6px #0009,0 0 10px #78aec268;
+}
+.slot.riot-blocked .slot-alert,
+.slot.riot-strike .slot-alert{
+  border-color:#a66d50;
+  background:#33231cf5;
+  color:#efb38e;
+}
+.slot.riot-shutdown .slot-alert{
+  border-color:#ae554b;
+  background:#3a201ef5;
+  color:#f1a69c;
+  box-shadow:0 2px 6px #0009,0 0 9px #b34d4468;
+}
+.population-line .warn-text{
+  color:#c8a77b;
+}
+.population-line .danger-text{
+  color:#d98a78;
+}
+@media(max-width:360px){
+  .slot-alert{
+    top:-7px;
+    right:-7px;
+    min-width:16px;
+    height:16px;
+    padding:0 3px;
+    font-size:7px;
+  }
+}
