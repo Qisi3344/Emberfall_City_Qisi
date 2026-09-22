@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, lawState, lawVisibility, score } from './game.js';
+import { EVENTS, RESEARCH, newGame, act, advanceHours, weather, ringOf, housing, availableWorkers, childLaborers, lawState, lawVisibility, score, riotOverview, riotSlotStatus } from './game.js';
 const start = s => {
   assert.equal(act(s, { type: 'confirmName', name: '测试执政者', playerId: 'test-player-id' }).ok, true);
   assert.equal(act(s, { type: 'start' }).ok, true);
@@ -460,4 +460,75 @@ test('opening resources, hope, and discontent use balanced random ranges', () =>
   } finally {
     Math.random = originalRandom;
   }
+});
+
+
+test('riot ultimatum immediately creates visible worker refusal instead of only a global stat penalty', () => {
+  const s = newGame();
+  start(s);
+  s.population = 40; s.children = 0; s.sick = 0;
+  s.resources = { coal: 500, wood: 500, steel: 200, food: 500 };
+  for (const [index, building, workers] of [[2, 'coal', 10], [3, 'hunter', 10], [4, 'workshop', 5], [5, 'saw', 10]]) {
+    assert.equal(act(s, { type: 'build', index, building }).ok, true);
+    assert.equal(act(s, { type: 'staff', index, delta: workers }).ok, true);
+  }
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    s.discontent = 100;
+    advanceHours(s, 1);
+    const riot = riotOverview(s);
+    assert.equal(s.social.riotDeadline, 48);
+    assert.equal(riot.stage, 1);
+    assert.ok(riot.effects.some(effect => effect.type === 'strike'));
+    assert.ok(s.social.riotStrikes[0].absentWorkers >= 1);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test('riot roadblocks prevent local construction and negotiation clears one active disruption', () => {
+  const s = newGame();
+  start(s);
+  s.resources.food = 50;
+  s.social.riotDeadline = 20;
+  s.social.riotBlocks = [{ sector: 0, until: 20 }];
+  assert.equal(riotSlotStatus(s, 0).blocked, true);
+  assert.equal(act(s, { type: 'upgrade', index: 0 }).ok, false);
+  const beforeFood = s.resources.food;
+  assert.equal(act(s, { type: 'riot-negotiate' }).ok, true);
+  assert.equal(s.resources.food, beforeFood - 8);
+  assert.equal(riotOverview(s).effects.length, 0);
+
+  s.social.riotStrikes = [{ slot: 0, absentWorkers: 1, until: 20 }];
+  assert.equal(act(s, { type: 'riot-negotiate' }).ok, false, '谈判应有 8 小时冷却');
+});
+
+test('martial law clears roadblocks but makes active worker refusal last longer', () => {
+  const s = newGame();
+  start(s);
+  s.day = 11; s.hour = 10;
+  s.hope = 80; s.discontent = 95;
+  s.laws = ['venue', 'nightWatch'];
+  s.lawDay = 0;
+  s.social.riotDeadline = 10;
+  s.social.riotBlocks = [{ sector: 0, until: 18 }];
+  s.social.riotStrikes = [{ slot: 2, absentWorkers: 2, until: 18 }];
+  assert.equal(act(s, { type: 'law', id: 'martialLaw' }).ok, true);
+  assert.equal(s.social.riotBlocks.length, 0);
+  assert.equal(s.social.riotStrikes[0].until, 20);
+  assert.equal(s.social.riotDeadline, 34);
+});
+
+test('riot roadblock reduces production locally rather than applying a citywide ultimatum multiplier', () => {
+  const s = newGame();
+  start(s);
+  s.population = 30; s.children = 0; s.sick = 0;
+  s.resources = { coal: 100, wood: 500, steel: 200, food: 500 };
+  assert.equal(act(s, { type: 'build', index: 2, building: 'coal' }).ok, true);
+  assert.equal(act(s, { type: 'staff', index: 2, delta: 10 }).ok, true);
+  s.hour = 8;
+  s.social.riotBlocks = [{ sector: 2, until: 20 }];
+  advanceHours(s, 1);
+  assert.equal(s.resources.coal, 102.5);
 });
